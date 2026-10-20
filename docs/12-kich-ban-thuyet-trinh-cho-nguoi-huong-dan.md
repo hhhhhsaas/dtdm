@@ -3,7 +3,8 @@
 
 > **Mục đích tài liệu:** dùng trực tiếp khi trình bày với người hướng dẫn / hội đồng.
 > File này là "chú thích đầy đủ" cho mỗi slide, mỗi câu hỏi, mỗi bước demo.
-> Mọi con số đều lấy từ hệ thống đang chạy thật trên máy demo (WSL2 / Docker, 16 container).
+> Hạ tầng: **VMware → OpenStack (DevStack) → VM `rental-server` → Docker, 16 container**.
+> ⚠️ Các con số (KPI dashboard, smoke 26/26, p95) đo trên bản chạy thử trước — **đo lại trên `rental-server`** (checklist 4.2) rồi cập nhật trước khi trình bày.
 > **Tài liệu liên kết:** `docs/11-tong-quan-cho-nguoi-huong-dan.md` (overview), `docs/09-slide-thuyet-trinh.md` (12 slide structure).
 
 ---
@@ -30,7 +31,7 @@
 ```
 HỆ THỐNG QUẢN LÝ PHÒN THỐ TRÕ THEO KIẾN TRÚC MICROSERVICE
 [Tên SV] · [Lớp] · GVHD: [Tên GV]
-Mật độ: 8 service + 1 scheduler · 16 container · Docker WSL2
+Mật độ: 8 service + 1 scheduler · 16 container · Docker trên OpenStack
 ```
 
 **Cần nói:**
@@ -41,7 +42,7 @@ Mật độ: 8 service + 1 scheduler · 16 container · Docker WSL2
 
 ## 1.2. Tóm tắt 1 phút (đọc nếu chỉ có 60 giây)
 
-> "Em làm hệ thống quản lý phòng trọ cho dãy trọ 200–500 phòng. Thay vì viết monolith, em chia thành 8 microservice, mỗi service một database riêng, giao tiếp event-driven qua RabbitMQ. Hệ thống này chạy thật trên laptop 8 GB với 16 container Docker, có CI kiểm chứng 6 bước tự động, smoke 26/26 PASS. Ba điểm khác biệt so với đồ án cùng đề tài: (1) token nội bộ SYSTEM có chủ quyền, (2) mã hóa CCCD AES-256-GCM vẫn tìm kiếm được nhờ blind index, (3) kênh thông báo là adapter — thêm Telegram không sửa nghiệp vụ. Em sẵn sàng demo trực tiếp và trả lời câu hỏi về 'tại sao'."
+> "Em làm hệ thống quản lý phòng trọ cho dãy trọ 200–500 phòng. Thay vì viết monolith, em chia thành 8 microservice, mỗi service một database riêng, giao tiếp event-driven qua RabbitMQ. Hệ thống chạy thật trên VM do private cloud OpenStack cấp (4 GB RAM) với 16 container Docker, có CI kiểm chứng 6 bước tự động, smoke 26/26 PASS. Ba điểm khác biệt so với đồ án cùng đề tài: (1) token nội bộ SYSTEM có chủ quyền, (2) mã hóa CCCD AES-256-GCM vẫn tìm kiếm được nhờ blind index, (3) kênh thông báo là adapter — thêm Telegram không sửa nghiệp vụ. Em sẵn sàng demo trực tiếp và trả lời câu hỏi về 'tại sao'."
 
 **Nội dung slide (hiện lên):**
 ```
@@ -49,7 +50,7 @@ Mật độ: 8 service + 1 scheduler · 16 container · Docker WSL2
 |---|---|
 | Đề tài | Quản lý dãy trọ 200–500 phòng, ~2.000 người thuê |
 | Kiến trúc | 8 microservice + 1 scheduler, mỗi service 1 DB, event-driven |
-| Triển khai | Docker Compose trên 1 máy (WSL2), 16 container chạy thật |
+| Triển khai | OpenStack cấp VM `rental-server` → Docker Compose, 16 container chạy thật |
 | Kiểm chứng | scripts/07-verify-final.sh → TẤT CẢ ĐẠT; smoke 26/26 PASS |
 | 3 điểm khác biệt | Token SYSTEM · AES-256-GCM CCCD + blind index · Adapter thông báo |
 ```
@@ -122,12 +123,12 @@ Mật độ: 8 service + 1 scheduler · 16 container · Docker WSL2
 - "Hệ thống này chọn giải pháp: đóng vai private cloud, dùng 8 microservice, mỗi service một database riêng, giao tiếp event-driven qua RabbitMQ."
 - "Kiến trúc tổng: Client (Web SPA) → Nginx (TLS, reverse proxy) → 8 microservice FastAPI (Python 3.12) → PostgreSQL (8 DB riêng) + Redis + MinIO + RabbitMQ."
 - "Số container: 16 container (chế độ laptop: 8 service + scheduler + nginx + postgres + redis + rabbitmq + minio + prometheus + grafana)."
-- "Kiến trúc được triển khai thật trên laptop 8 GB với WSL2 Ubuntu 24.04."
+- "Hạ tầng gồm 3 lớp: VMware chạy VM `openstack-host`; trên đó DevStack dựng private cloud OpenStack; OpenStack cấp VM `rental-server` (Ubuntu 24.04, 2 vCPU / 4 GB) qua Nova, mạng Neutron có floating IP và security group; Docker Compose chạy toàn bộ hệ thống trong VM đó."
 
 **Cần nhấn mạnh:**
-- Private cloud (không dùng công cộng).
+- Private cloud thật ở tầng IaaS (OpenStack), không dùng cloud công cộng.
 - Database-per-service là quyết định thiết kế then chốt.
-- Chạy trên laptop 8 GB cho thấy hệ thống nhẹ gọn nhưng đầy đủ chức năng.
+- Chạy trong VM 4 GB cho thấy hệ thống nhẹ gọn nhưng đầy đủ chức năng.
 
 ---
 
@@ -137,7 +138,7 @@ Mật độ: 8 service + 1 scheduler · 16 container · Docker WSL2
 **Cần nói (mỗi đặc trưng 15-20 giây):**
 
 1. **Self-service provisioning:** "Em đã định nghĩa các lệnh `make up`, `make health`, `make backup` — chỉ 1 lệnh để hệ thống sẵn sàng, không cần手动 can thiệp."
-2. **Broad network access:** "HTTPS + LAN LocalSubnet, client có thể truy cập từ mọi thiết bị trong cùng mạng WiFi."
+2. **Broad network access:** "VM được truy cập qua floating IP của Neutron, security group chỉ mở 22/80/443; mọi client đi vào qua HTTPS của nginx."
 3. **Resource pooling:** "8 database trong cùng 1 PostgreSQL instance, nhưng mỗi service có quota riêng (CPU/RAM). Ví dụ: `billing` 2 CPU / 1 GB, `postgres` 1,5 CPU / 3 GB."
 4. **Rapid elasticity:** "Scale service độc lập: `docker compose up -d --scale auth=3` tạo 3 bản auth nếu traffic tăng, không ảnh hưởng các service khác."
 5. **Measured service:** "Prometheus scrape `/metrics` định kỳ, Grafana provision sẵn dashboard. KPI: p95 đọc <300 ms, ghi <500 ms, lỗi <1%."
@@ -332,17 +333,20 @@ def blind_index(value: str | None) -> str | None:
 ```
 | # | Thao tác | Ý nghĩa cần nói |
 |---|---|---|
-| 1 | Vào https://localhost/, đăng nhập admin | Access token qua gateway nginx; HTTPS tự ký có SAN IP LAN |
+| 0 | Mở Horizon → Instances → rental-server | VM do OpenStack cấp: flavor, floating IP, security group |
+| 1 | Vào https://localhost:8443/ (SSH tunnel), đăng nhập admin | Access token qua gateway nginx; HTTPS tự ký |
 | 2 | Xem Dashboard: doanh thu, tỷ lệ lấp đầy, công nợ | Dữ liệu đọc từ read model (CQRS) |
 | 3 | Xem tab Hóa đơn, lọc theo tháng | Nguồn chân lý ở billing-service |
 | 4 | Mở tab Người thuê, bấm xem 1 hồ sơ | CCCD đã mã hóa AES-256-GCM |
 | 5 | Mở tab Báo cáo → biểu đồ 30 ngày | Aggregate-on-read, khớp KPI |
-| 6 | Vào http://localhost:3000 (Grafana) | Metrics tự thu thập, dashboard tự provision |
+| 6 | Vào http://localhost:3000 (Grafana, tunnel 2 chặng) | Metrics tự thu thập, dashboard tự provision |
 | 7 | Chạy make health trong terminal | 9/9 service healthy |
 | 8 | Chạy smoke test | 26/26 PASS |
 ```
 
 **Cần nói từng bước:**
+
+0. **Horizon:** "Đây là giao diện quản trị OpenStack. VM `rental-server` do Nova tạo từ cloud image Ubuntu 24.04, gán floating IP 172.24.4.51, security group chỉ mở 22/80/443. Toàn bộ hệ thống em sắp demo chạy bên trong VM này."
 
 1. **Đăng nhập admin:** "Em sẽ bấm đăng nhập với tài khoản admin. Hệ thống sẽ trả về access token qua gateway nginx. Token có hạn 15 phút, refresh token có thể lấy mới khi hết hạn."
 
@@ -354,7 +358,7 @@ def blind_index(value: str | None) -> str | None:
 
 5. **Biểu đồ 30 ngày:** "Mở tab Báo cáo → biểu đồ 30 ngày. Đồ đồ này dùng trường `stat_date` / `collected` từ API — nếu đọc sai schema sẽ bị trống. Em đã sửa lỗi này rồi, biểu đồ hiện đúng và khớp KPI ở trên."
 
-6. **Grafana:** "Vào http://localhost:3000 (dùng admin/same password). Grafana đã provision sẵn dashboard metrics: CPU/Memory mỗi service, taux de frappe global, p95 latency. Đồ thị cập nhật real-time."
+6. **Grafana:** "Vào http://localhost:3000 qua SSH tunnel, vì Grafana chỉ mở trong VM (dùng admin/same password). Grafana đã provision sẵn dashboard metrics: CPU/Memory mỗi service, taux de frappe global, p95 latency. Đồ thị cập nhật real-time."
 
 7. **Make health:** "Trong terminal, chạy `make health`. Kết quả: 9/9 service healthy (Prometheus không có healthcheck). Chứng minh mọi service sẵn sàng."
 
@@ -396,7 +400,7 @@ def blind_index(value: str | None) -> str | None:
 1. **RPO/RTO:** "RPO (Recovery Point Objective): 5 phút — nghĩa là có thể mất tối đa 5 phút dữ liệu. RTO (Recovery Time Objective): 30 phút — hệ thống khôi phục trong 30 phút."
 2. **Diễn tập restore:** "Em đã chuẩn bị video 30s quay lại quy trình `make restore F=<file>`. Trong thực tế, em sẽ chỉ nói qua quy trình, không thực hiện vì thời gian."
 3. **Scale theo triệu chứng:** "Nếu CPU service billing cao → `docker compose up -d --scale billing=3`. Nếu mạng nhiều tenant → thêm service room hoặc scale lên bản thêm."
-4. **Mở rộng lên nhiều host:** "Hiện tại chạy 1 host (laptop/WSL2). Để lên nhiều host → chuyển sang Kubernetes/Swarm. Đã phân tích ở chương 7: cần lưu state phân tán (Redis cho session, DB clustering cho PostgreSQL)."
+4. **Mở rộng lên nhiều host:** "Hiện tại chạy 1 VM ứng dụng. Nhờ OpenStack, thêm host chỉ là tạo thêm instance từ cùng image/flavor; sau đó chuyển sang Kubernetes/Swarm để điều phối nhiều VM. Đã phân tích ở chương 7: cần lưu state phân tán (Redis cho session, DB clustering cho PostgreSQL)."
 
 **Cần nhấn mạnh:**
 - Sao lưu là cần thiết nhưng cần thường xuyên test.
@@ -415,7 +419,7 @@ def blind_index(value: str | None) -> str | None:
 ```
 
 **Cần nói:**
-- "Tóm lại, em đã xây dựng hệ thống quản lý phòng trọ chạy thật trên laptop 8 GB với 8 microservice, mỗi service một database riêng, giao tiếp event-driven qua RabbitMQ, có Outbox, Idempotent Consumer, DLQ, Saga, CQRS, bảo mật JWT + RBAC + AES-256-GCM, và kiểm chứng tự động 6 bước + smoke 26/26."
+- "Tóm lại, em đã xây dựng hệ thống quản lý phòng trọ chạy thật trên VM do private cloud OpenStack cấp, với 8 microservice, mỗi service một database riêng, giao tiếp event-driven qua RabbitMQ, có Outbox, Idempotent Consumer, DLQ, Saga, CQRS, bảo mật JWT + RBAC + AES-256-GCM, và kiểm chứng tự động 6 bước + smoke 26/26."
 - "Ba điểm khác biệt: (1) token SYSTEM có chủ quyền, (2) mã hóa CCCD vẫn tìm kiếm được, (3) kênh thông báo là adapter."
 - "Cảm ơn thầy/cô đã lắng nghe. Em sẵn sàng trả lời câu hỏi."
 
@@ -471,10 +475,10 @@ def blind_index(value: str | None) -> str | None:
 
 | # | Câu hỏi | Đáp án ngắn |
 |---|---|---|
-| 31 | Chạy hệ thống trên laptop 8 GB có suôn sàng không? | Được, nhưng cần cấu hình `.wslconfig` RAM 5GB + swap 4GB, tắt auto shut down VM (`vmIdleTimeout=-1`). |
-| 32 | Làm sao bật hệ thống lại sau khi tắt máy? | Chạy `powershell -ExecutionPolicy Bypass -File scripts\start-windows.ps1` (hoặc nhấp đúp `START-QLPT.bat`). |
-| 33 | LAN truy cập thế nào? | Chạy `powershell -File scripts\lan-expose-windows.ps1` (nhấn Yes UAC); firewall `LocalSubnet` + portproxy `0.0.0.0:80/443 → WSL IP`; cert SAN IP LAN thực. |
-| 34 | Nếu IP WSL đổi sau khi bật lại máy thì sao? | Cần chạy lại script lan-expose để tạo lại cert + portproxy. IP WSL thường ổn định nếu không tắt cứng. |
+| 31 | VM 4 GB có chạy nổi 16 container không? | Dùng overlay `docker-compose.laptop.yml` (hạ trần RAM, bỏ loki/promtail/cAdvisor/node-exporter) + swap 2 GB + `vm.overcommit_memory=1`. Số liệu `docker stats`: [điền sau khi đo]. |
+| 32 | Làm sao bật hệ thống lại sau khi tắt máy? | Ưu tiên Suspend VMware. Nếu tắt hẳn: `br-ex-ip.service` tự gán lại `172.24.4.1` cho `br-ex`, kiểm tra `openstack server list`, container tự lên nhờ `restart: unless-stopped`. |
+| 33 | Truy cập hệ thống từ ngoài thế nào? | Floating IP `172.24.4.51` (router Neutron NAT sang fixed IP `10.0.0.15`), security group mở 22/80/443. Từ laptop Windows đi qua `openstack-host` bằng SSH tunnel. Lên mạng công khai thì dùng tunnel (ngrok/cloudflared). |
+| 34 | Vì sao VM cần proxy để ra internet? | Ảo hóa lồng 2 lớp (VMware → DevStack): gói dữ liệu trả về bị `openstack-host` RST. Đã loại trừ MTU, offload, MSS, conntrack; giải pháp là `tinyproxy` trên `openstack-host`. Đây là hạn chế của môi trường lab, cloud thật không gặp. |
 | 35 | Cách thêm service mới vào hệ thống? | 1) Tạo folder service, 2) Viết main.py + routers, 3) Thêm config vào docker-compose.yml, 4) `docker compose build + up -d`, 5) Seed test data, 6) Verify health + smoke. |
 | 36 | Cách đóng băng phiên bản dependency? | `services/requirements.txt` dùng `==` exact version; `pyproject.toml` dùng `>=` minimum; CI chạy `pip install` và verify. |
 | 37 | Làm sao rollback nếu deploy mới bị lỗi? | `docker compose down` quay lại version trước; hoặc `docker compose up -d @version` (nếu dùng named version). |
@@ -512,12 +516,15 @@ def blind_index(value: str | None) -> str | None:
 
 ## 4.2. Hệ thống cần chạy trọn trước 1 tiếng
 
-- [ ] Chạy `powershell -ExecutionPolicy Bypass -File scripts\start-windows.ps1`.
-- [ ] Chạy `wsl -u root -e bash -lc "cd /opt/qlpt && bash scripts/07-verify-final.sh"` → kết quả "TẤT CẢ ĐẠT".
-- [ ] Smoke test `make test-int` → 26/26 PASS.
-- [ ] Truy cập `https://localhost/` và `https://192.168.22.142/` → 200 OK.
-- [ ] Grafana `http://localhost:3000/` → login admin OK.
-- [ ] Kiểm tra Trivy report `/opt/qlpt/trivy-auth-after.txt` → Python 7 HIGH / 0 CRITICAL.
+- [ ] Bật VMware → `openstack-host`; `ip a show br-ex` có `172.24.4.1`; `systemctl status tinyproxy` đang chạy.
+- [ ] `openstack server list` → `rental-server` ACTIVE; Horizon `http://192.168.88.128/dashboard` đăng nhập được.
+- [ ] Trong `rental-server`: `cd ~/dtdm && make laptop-up && make health` → 9/9.
+- [ ] `sudo bash scripts/07-verify-final.sh` → kết quả "TẤT CẢ ĐẠT".
+- [ ] Smoke test `sudo make test-int` → ghi lại kết quả thật (bản trước: 26/26 PASS).
+- [ ] `docker stats --no-pager` → ghi RAM/CPU thật để trả lời câu 31.
+- [ ] Mở SSH tunnel; `https://localhost:8443/` → 200 OK; Grafana `http://localhost:3000/` → login admin OK.
+- [ ] Cập nhật KPI dashboard trong mục demo theo dữ liệu thật trên `rental-server`.
+- [ ] Snapshot VMware `demo-ok` sau khi mọi mục trên đạt.
 
 ## 4.3. Code và demo cần test
 
@@ -598,7 +605,7 @@ def blind_index(value: str | None) -> str | None:
 
 > **File đã đồng bộ:** 
 > - Nguồn: `C:\Users\bachh\Downloads\ql-phong-tro\docs\12-kich-ban-thuyet-trinh-cho-nguoi-huong-dan.md`
-> - Bản triển khai: `/opt/qlpt/docs/12-kich-ban-thuyet-trinh-cho-nguoi-huong-dan.md`
+> - Bản triển khai: `~/dtdm/docs/12-kich-ban-thuyet-trinh-cho-nguoi-huong-dan.md` (trong VM `rental-server`)
 > - Tự động cập nhật: `docs/11-tong-quan-cho-nguoi-huong-dan.md` (đã thêm dòng tham chiếu file 12).
 
 ---

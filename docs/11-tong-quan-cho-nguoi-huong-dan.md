@@ -1,10 +1,11 @@
 # TỔNG QUAN ĐỒ ÁN — Hệ thống quản lý phòng trọ theo kiến trúc Microservice
 
 > **Tài liệu trình bày dành cho người hướng dẫn** (dựng từ code & hạ tầng thực tế).
-> Mọi con số trong tài liệu đều lấy từ hệ thống đang chạy trên máy demo (WSL2 / Docker),
-> không phải con số ước tính.
+> Hạ tầng triển khai: **VMware → OpenStack (DevStack) → VM `rental-server` (Ubuntu 24.04) → Docker**.
+> ⚠️ Các con số kiểm chứng (smoke 26/26, KPI dashboard, số container chạy) được đo trên bản
+> chạy thử trước đó; **phải đo lại trên `rental-server` trước buổi bảo vệ** (checklist ở mục 12).
 >
-> Bản gốc mã nguồn: `ql-phong-tro/` · Bản triển khai thật: `/opt/qlpt` (WSL2 Ubuntu 24.04)
+> Bản gốc mã nguồn: `ql-phong-tro/` · Bản triển khai: `~/dtdm` trong VM `rental-server`
 
 ---
 
@@ -14,7 +15,7 @@
 |---|---|
 | **Đề tài** | Quản lý dãy trọ 200–500 phòng, ~2.000 người thuê (thu tiền, hợp đồng, điện nước, sự cố) |
 | **Giải pháp** | Đóng vai **private cloud**: 8 microservice (FastAPI, Python 3.12) + 1 scheduler, mỗi service **một database riêng**, giao tiếp **event-driven** qua RabbitMQ |
-| **Triển khai** | Docker Compose trên **1 máy duy nhất** — đang chạy thật trên laptop 8 GB (WSL2), **16 container** |
+| **Triển khai** | Private cloud **OpenStack (DevStack)** cấp VM `rental-server` (2 vCPU / 4 GB) → Docker Compose, **16 container** (chế độ gọn) |
 | **Kiến trúc sự kiện** | Transactional **Outbox** → RabbitMQ → **Idempotent Consumer** → **DLQ** + **Saga** + **CQRS** |
 | **Bảo mật** | JWT + RBAC nhiều tầng, mã hóa CCCD AES-256-GCM + blind index, token nội bộ SYSTEM, network 4 lớp, container non-root |
 | **Kiểm chứng** | Script verify 6 bước → **TẤT CẢ ĐẠT**; smoke test **26/26 PASS**; 9/9 service healthy; 16/16 container chạy |
@@ -246,7 +247,8 @@ Vì report chỉ ghi **read model** (không phải nguồn chân lý), hệ th�
 | **Giới hạn tài nguyên** | Service 0,5 CPU / 512 MB; `billing` 2 CPU / 1 GB; `postgres` 1,5 CPU / 3 GB |
 | **Cổng backend ghim 127.0.0.1** | Chỉ nginx đi qua được |
 | **Grafana** chỉ `127.0.0.1` | Vào từ xa bằng SSH tunnel |
-| **HTTPS** | Chứng chỉ tự ký có SAN = `localhost` + IP LAN thật |
+| **HTTPS** | Chứng chỉ tự ký (nginx) |
+| **Security group OpenStack** | Chỉ mở 22 / 80 / 443 / ICMP vào `rental-server` — lớp tường lửa ở tầng IaaS |
 | **Rate limit nginx** | Chống brute-force login, spam API |
 
 ### 6.4. Kết quả quét lỗ hổng (Trivy)
@@ -256,19 +258,41 @@ Vì report chỉ ghi **read model** (không phải nguồn chân lý), hệ th�
 | **Python (dependency)** | **7 HIGH, 0 CRITICAL** — sau khi nâng `PyJWT 2.10.1 → 2.14.0` (vá CVE CRITICAL) và `python-multipart 0.0.20 → 0.0.30` |
 | **Hệ điều hành (Debian base image)** | 54 HIGH — là CVE upstream của base image, xử lý bằng rebuild định kỳ |
 
-Báo cáo đầy đủ: `/opt/qlpt/trivy-auth-after.txt`.
+Báo cáo đầy đủ: `trivy-auth-after.txt` (đo trên bản chạy thử trước; quét lại trên `rental-server` nếu cần).
 
 ---
 
-## 7. Triển khai trên máy demo (laptop 8 GB / WSL2)
+## 7. Triển khai trên private cloud OpenStack
 
-| Thành phần | Bản chạy thật |
+```
+Laptop (Windows, 16 GB) → VMware Workstation
+  └─ VM openstack-host  (Ubuntu 24.04, 192.168.88.128, 10 GB RAM, DevStack = tầng IaaS)
+       └─ OpenStack Nova/Neutron → VM rental-server (Ubuntu 24.04, 2 vCPU / 4 GB / 30 GB)
+            fixed IP 10.0.0.15 · floating IP 172.24.4.51 · security group 22/80/443
+            └─ Docker Compose → 16 container
+```
+
+| Thành phần | Bản triển khai |
 |---|---|
-| **Số container** | **16** (chế độ laptop: 8 service + scheduler + nginx + postgres + redis + rabbitmq + minio + prometheus + grafana) |
-| **Chế độ đầy đủ** | Thêm loki, promtail, cAdvisor, node-exporter (bật bằng `make laptop-monitor`) |
-| **Cấu hình RAM** | `.wslconfig`: WSL giới hạn **5 GB RAM + 4 GB swap**, tắt tự tắt VM khi idle |
-| **Chạy lại sau khi tắt máy** | 1 lệnh `scripts\start-windows.ps1` (hoặc nhấp đúp `START-QLPT.bat`) |
-| **Truy cập LAN** | `scripts\lan-expose-windows.ps1` (firewall chỉ mở cho `LocalSubnet` + portproxy) |
+| **Số container** | **16** (chế độ gọn `make laptop-up`: 8 service + scheduler + nginx + postgres + redis + rabbitmq + minio + prometheus + grafana) |
+| **Chế độ đầy đủ** | Thêm loki, promtail, cAdvisor, node-exporter (`make laptop-monitor`) — không nên bật trên VM 4 GB |
+| **Cấu hình RAM** | VM 4 GB + swap 2 GB, `vm.overcommit_memory=1`; overlay `docker-compose.laptop.yml` hạ trần RAM |
+| **Truy cập vào VM** | Floating IP (Neutron NAT `172.24.4.51 → 10.0.0.15`); từ Windows đi qua `openstack-host` bằng SSH tunnel |
+| **Đường ra internet của VM** | Qua proxy `tinyproxy` trên `openstack-host` (`172.24.4.1:8888`) — xem mục 11 |
+| **Chạy lại sau khi tắt máy** | Ưu tiên **Suspend** VMware. Nếu tắt hẳn: `br-ex-ip.service` tự gán lại `172.24.4.1`, container tự lên nhờ `restart: unless-stopped` |
+
+**Mở giao diện từ Windows (SSH tunnel):**
+
+```powershell
+# Web: https://localhost:8443/
+ssh -N -L 8443:172.24.4.51:443 host@192.168.88.128
+
+# Grafana chỉ bind 127.0.0.1 trong rental-server → tunnel 2 chặng:
+#  (a) trên openstack-host, user stack:
+ssh -i ~/mykey.pem -N -L 13000:127.0.0.1:3000 ubuntu@172.24.4.51
+#  (b) trên Windows, rồi mở http://localhost:3000/
+ssh -N -L 3000:127.0.0.1:13000 host@192.168.88.128
+```
 
 ### 7.1. Ba lớp cấu hình Compose (overlay)
 
@@ -353,9 +377,11 @@ Báo cáo đầy đủ: `/opt/qlpt/trivy-auth-after.txt`.
 | Hạn chế | Lý do / kế hoạch |
 |---|---|
 | **Chưa có unit test** | Hiện chỉ có smoke test tích hợp 26 kiểm tra; kế hoạch: viết unit test cho `common/` và `pricing.py` (2 module thuần logic, dễ test nhất) |
-| **Load test chưa chạy lại trên máy demo** | Kịch bản + ngưỡng k6 đã đặt sẵn; cần chạy lại để lấy số liệu chính thức (máy 8 GB sẽ cho số khác máy chủ 16 GB) |
+| **Load test chưa chạy lại trên `rental-server`** | Kịch bản + ngưỡng k6 đã đặt sẵn; cần chạy lại để lấy số liệu chính thức (VM 4 GB chạy lồng 2 lớp ảo hóa sẽ cho số khác máy chủ thật) |
+| **VM trong OpenStack không ra internet trực tiếp** | Ảo hóa lồng (VMware → DevStack): gói dữ liệu trả về bị `openstack-host` RST; đã kiểm tra MTU, offload, MSS, conntrack mà chưa rõ gốc → dùng proxy trên `openstack-host`. Trên cloud thật không gặp |
+| **DevStack không dành cho production** | Sau reboot `br-ex` mất địa chỉ → đã thêm `br-ex-ip.service`; cần snapshot VMware trước mỗi thay đổi lớn |
 | **7 lỗ hổng HIGH còn lại** | `cryptography 44.0.0` và `starlette 0.41.3` — `starlette` bị ràng buộc bởi FastAPI 0.115.6, cần nâng cả FastAPI để xử lý |
-| **Chưa có hạ tầng thật** | Chạy 1 host; để lên nhiều host thì chuyển Swarm/K8s (đã phân tích ở chương 7) |
+| **Chỉ 1 VM ứng dụng** | Chạy 1 VM `rental-server`; để lên nhiều VM thì tạo thêm instance từ OpenStack + chuyển Swarm/K8s (đã phân tích ở chương 7) |
 | **Thông báo chưa gửi thật** | Email/SMS/Zalo đang chạy **adapter + cơ chế DRY_RUN**; khung đã sẵn, thiếu key nhà mạng |
 | **MinIO phải dùng image Chainguard** | Image `minio/minio` đã bị xóa khỏi Docker Hub (09/2026) → phải pin theo SHA digest |
 
@@ -363,21 +389,26 @@ Báo cáo đầy đủ: `/opt/qlpt/trivy-auth-after.txt`.
 
 ## 12. Cách trình bày demo trong 5 phút (nếu cần chạy thật)
 
-```powershell
-# 1. Khởi động hệ thống (~1 phút)
-powershell -ExecutionPolicy Bypass -File scripts\start-windows.ps1
+```bash
+# 1. Từ Windows: vào openstack-host → user stack → rental-server
+ssh host@192.168.88.128
+sudo -u stack -i
+source ~/devstack/openrc admin demo && openstack server list   # rental-server ACTIVE
+ssh -i ~/mykey.pem ubuntu@172.24.4.51
 
-# 2. Kiểm chứng toàn hệ thống (1 lệnh, 6 bước)
-wsl -u root -e bash -lc "cd /opt/qlpt && bash scripts/07-verify-final.sh"
+# 2. Trong rental-server: khởi động + kiểm chứng (1 lệnh, 6 bước)
+cd ~/dtdm && make laptop-up
+sudo bash scripts/07-verify-final.sh
 ```
 
 | Bước | Thao tác trên giao diện | Ý nghĩa cần nói |
 |---|---|---|
-| 1 | Vào `https://localhost/`, đăng nhập `admin` | Ghi nhận access token qua gateway nginx |
+| 0 | Mở Horizon `http://192.168.88.128/dashboard` → Instances | `rental-server` là VM do OpenStack cấp (IaaS), có floating IP + security group |
+| 1 | Vào `https://localhost:8443/` (qua SSH tunnel, mục 7), đăng nhập `admin` | Ghi nhận access token qua gateway nginx |
 | 2 | Xem **Dashboard**: doanh thu, tỷ lệ lấp đầy, công nợ | Dữ liệu đọc từ **read model** (CQRS) |
 | 3 | Xem tab **Hóa đơn**, lọc theo tháng | Nguồn chân lý ở `billing-service` |
 | 4 | Mở tab **Người thuê**, bấm xem một hồ sơ | CCCD **đã mã hóa AES-256-GCM** |
-| 5 | Vào `http://localhost:3000` (Grafana) | Metrics tự thu thập, dashboard tự provision |
+| 5 | Vào `http://localhost:3000` (Grafana, qua tunnel 2 chặng ở mục 7) | Metrics tự thu thập, dashboard tự provision |
 
 > Nếu mạng/sự cố kỹ thuật xảy ra: chuẩn bị sẵn **video 30 giây** quay lại các bước trên.
 

@@ -50,7 +50,7 @@ make certs               # sinh chứng chỉ TLS tự ký — nginx cần để
 # 2. Khởi động toàn bộ hệ thống
 make prod-up             # PRODUCTION (restart: always + resource guarantee)
 # hoặc: make up          # môi trường dev / triển khai giả lập
-# hoặc: make laptop-up   # 💻 máy RAM hạn chế (VD WSL2 8 GB): tạm bỏ loki/
+# hoặc: make laptop-up   # 💻 máy RAM hạn chế (VD rental-server 4 GB): tạm bỏ loki/
 #                        #    promtail/cAdvisor/node-exporter + hạ trần RAM
 #                        #    → chạy: docker compose -f docker-compose.yml
 #                        #      -f docker-compose.laptop.yml up -d
@@ -61,86 +61,49 @@ make health              # 9/9 service trả HTTP 200
 make urls                # in toàn bộ đường dẫn truy cập
 
 # 4. Kiểm chứng chất lượng cuối cùng (1 lệnh gom MỌI kiểm tra)
-bash scripts/07-verify-final.sh         # từ WSL/Linux: 16 container + gateway
+bash scripts/07-verify-final.sh         # 16 container + gateway
                                         #   + 2 tài khoản demo + 26 smoke test
-powershell -ExecutionPolicy Bypass \
-    -File scripts\verify-windows.ps1    # từ Windows: https://localhost + 8 cổng
-                                        #   + đăng nhập admin (đọc secret từ WSL)
 
 # 5. Mở giao diện
-#   https://localhost/          Ứng dụng web (SPA) — hoặc https://<IP-LAN>/ (xem mục LAN)
+#   https://<floating-IP>/      Ứng dụng web (SPA), VD https://172.24.4.51/
 #   http://localhost:3000       Grafana (admin / mật khẩu trong secrets/admin_password.txt)
 #                               ⭐ chế độ laptop CHỈ bind 127.0.0.1 — vào từ xa thì SSH tunnel:
 #                                  ssh -L 3000:localhost:3000 <user>@<server>
 #   MinIO console (chỉ nội bộ):  ssh -L 9001:localhost:9001 <user>@<server>
 ```
 
-### Chạy lại mỗi ngày (sau khi tắt máy / khởi động lại Windows)
+### Chạy lại sau khi tắt máy (VMware → OpenStack → `rental-server`)
 
-Trên **máy demo WSL2**, hệ thống đã được cài sẵn trong `/opt/qlpt`. Sau khi tắt
-máy hoặc WSL ngủ, chỉ cần **1 thao tác**:
-
-```powershell
-# Cách 1 (khuyến nghị) — nhấp đúp file .bat ở thư mục dự án:
-#   START-QLPT.bat   (bản tiện dụng ở Desktop/Downloads: KHOI-DONG-QLPT.bat)
-#
-# Cách 2 — gõ lệnh trong PowerShell:
-powershell -ExecutionPolicy Bypass -File scripts\start-windows.ps1
-```
-
-Script tự làm hết: **bật WSL → khởi động 16 container (chế độ laptop, KHÔNG build
-lại) → đợi `https://localhost/` trả 200 → mở trình duyệt + in tài khoản demo.**
-Sau đó vào **https://localhost/** là dùng được.
-
-Muốn chạy tay trong WSL (Ubuntu):
+Hệ thống chạy trong VM `rental-server` do OpenStack (DevStack) tạo, nằm trong VM
+`openstack-host` của VMware. Sau khi bật lại máy:
 
 ```bash
-cd /opt/qlpt
+# 1. Từ Windows PowerShell: vào VM openstack-host rồi chuyển sang user stack
+ssh host@192.168.88.128
+sudo -u stack -i
+
+# 2. Kiểm tra cầu nối floating IP (br-ex-ip.service tự gán lại sau reboot)
+ip a show br-ex | grep 172.24.4.1 || sudo systemctl start br-ex-ip.service
+source ~/devstack/openrc admin demo
+openstack server list            # rental-server phải ACTIVE
+
+# 3. Vào rental-server và kiểm tra stack
+ssh -i ~/mykey.pem ubuntu@172.24.4.51
+cd ~/dtdm
 make laptop-up      # hoặc: docker compose -f docker-compose.yml -f docker-compose.laptop.yml up -d
 make health         # kỳ vọng 9/9 ✅
 make reload-nginx   # chỉ cần khi vừa recreate backend (tránh 502 Bad Gateway)
 ```
 
-> 💡 Mọi container đặt `restart: unless-stopped`, nên **chỉ cần WSL bật** là Docker
-> + toàn bộ container tự chạy lại (chờ ~1 phút). Nếu gặp **502**, chạy `make reload-nginx`.
+> 💡 Mọi container đặt `restart: unless-stopped`, nên chỉ cần `rental-server` chạy là
+> toàn bộ container tự lên lại (chờ ~1 phút). Nên **Suspend** VMware thay vì tắt hẳn.
 
 ### Hết cảnh báo "Your connection is not private" (chứng chỉ tự ký)
 
-Trình duyệt báo `NET::ERR_CERT_AUTHORITY_INVALID` vì nginx dùng **chứng chỉ tự ký**
-(`CN=qlpt.local`, có SAN `localhost` + `127.0.0.1`) — đây là điều bình thường với
-môi trường demo/nội bộ, **không phải lỗi hệ thống**.
-
-- **Cách nhanh:** bấm **Advanced** → **Proceed to localhost (unsafe)**.
-- **Cách hết hẳn:** cài chứng chỉ vào kho tin cậy của Windows, rồi đóng/mở lại trình duyệt:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\trust-cert-windows.ps1
-# nếu Chrome/Edge vẫn chặn sau khi mở lại: chạy bằng quyền Admin với -AllUsers
-```
-
-### Chia sẻ cho máy khác trong cùng WiFi (LAN) — Windows + WSL2
-
-WSL2 chạy sau **NAT** nên máy khác **không** vào được `https://<IP-LAN>/` nếu chưa
-mở "cầu nối". Chạy **1 lệnh** (sẽ hiện hộp thoại **UAC → bấm Yes**):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\lan-expose-windows.ps1
-```
-
-Script tự làm:
-
-1. Mở **firewall Windows** cho **TCP 80/443 — CHỈ từ dải mạng nội bộ
-   (`LocalSubnet`)**, nên vẫn an toàn khi mang máy ra WiFi quán.
-2. Cài **`portproxy`** `0.0.0.0:80/443 → WSL2` (WSL2 NAT nên Windows đóng vai cầu nối).
-4. Đảm bảo **chứng chỉ có SAN = IP LAN hiện tại** (tự tạo lại + tin cậy lại nếu cần).
-
-Sau đó máy khác trong WiFi vào **`https://<IP-LAN>/`**. Trên máy đó, để hết cảnh báo
-cert thì import chứng chỉ công khai (`infra/nginx/certs/fullchain.pem`) hoặc bấm
-**Advanced → Proceed**.
-
-> ⭐ **Chạy lại script này mỗi khi bật máy** (IP của WSL2 đổi) **hoặc đổi WiFi**.
-> Nếu IP LAN của Windows đổi (DHCP), script tự phát hiện và tạo lại cert có SAN mới.
-> Grafana **không** được mở ra LAN (chỉ `127.0.0.1`) — dùng SSH tunnel nếu cần.
+Trình duyệt báo `NET::ERR_CERT_AUTHORITY_INVALID` vì nginx dùng **chứng chỉ tự ký** —
+đây là điều bình thường với môi trường demo/nội bộ, **không phải lỗi hệ thống**.
+Bấm **Advanced** → **Proceed**, hoặc import `infra/nginx/certs/fullchain.pem` vào
+kho chứng chỉ tin cậy của máy dùng để demo.
 
 ### Lỗi "Failed to fetch" / "HTTP 4xx" khi mở tab trong web
 
@@ -169,12 +132,7 @@ Xem `docs/04-docker-tren-ubuntu-server.md` để có hướng dẫn đầy đủ
 > Dự án dùng image Chainguard `cgr.dev/chainguard/minio@sha256:…` (vẫn là MinIO
 > upstream, chứa sẵn `mc` cho healthcheck) — xem comment trong `docker-compose.yml`.
 
-> ⚠️ **Ghi chú WSL2 (demo trên máy 8 GB):** WSL mặc định tự tắt *instance* sau
-> **15 s** và tắt *VM* sau **60 s** khi không còn tiến trình nào → mỗi lần bạn ngừng
-> gõ lệnh >15 s, Docker daemon + toàn bộ container bị dừng. Container tự bật lại nhờ
-> `restart: unless-stopped`, nhưng mất 1–2 phút. Dự án đã đặt trong `.wslconfig`:
-> `vmIdleTimeout=-1` + `instanceIdleTimeout=-1` để giữ WSL chạy liên tục.
-> Nếu `/api/v1/*` trả **502 Bad Gateway** (nginx cache IP upstream lúc khởi động,
+> ⚠️ Nếu `/api/v1/*` trả **502 Bad Gateway** (nginx cache IP upstream lúc khởi động,
 > còn backend vừa recreate thì IP đổi) → chạy `make reload-nginx`.
 
 ---
@@ -312,7 +270,7 @@ graph TB
 ```bash
 make up          # Khởi động toàn bộ
 make prod-up     # Khởi động PRODUCTION (thêm docker-compose.prod.yml: restart: always + resource guarantee)
-make laptop-up   # Khởi động chế độ LAPTOP (docker-compose.laptop.yml: gọn nhẹ cho máy 8 GB / WSL2)
+make laptop-up   # Khởi động chế độ LAPTOP (docker-compose.laptop.yml: gọn nhẹ cho VM RAM thấp)
 make down        # Dừng
 make status      # Xem trạng thái
 make logs        # Theo dõi log
@@ -330,12 +288,11 @@ make security    # Quét bảo mật
 ```
 
 > **Kiểm chứng cuối cùng (1 lệnh, 6 bước):**
-> `bash scripts/07-verify-final.sh` (từ WSL) và
-> `powershell -File scripts\verify-windows.ps1` (từ Windows).
+> `bash scripts/07-verify-final.sh` (chạy trong `rental-server`).
 >
 > **Lưu ý quyền:** `make test-int` và `07-verify-final.sh` phải đọc mật khẩu admin
 > trong `secrets/` (thư mục `700`, chỉ root đọc được). Hãy chạy bằng **root**:
-> `sudo make test-int` · `wsl -u root -e bash scripts/07-verify-final.sh`, hoặc
+> `sudo make test-int` · `sudo bash scripts/07-verify-final.sh`, hoặc
 > truyền thẳng: `QLPT_ADMIN_PWD="$(sudo cat secrets/admin_password.txt)" make test-int`.
 
 > Chế độ laptop: `laptop-down`, `laptop-restart S=<svc>`, `laptop-logs S=<svc>`,
