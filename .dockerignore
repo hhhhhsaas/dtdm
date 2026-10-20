@@ -1,0 +1,43 @@
+# ============================================================================
+#  .dockerignore — Context gửi vào Docker build chỉ cần services/ (Dockerfile
+#  chỉ COPY services/requirements.txt + services/). Loại bỏ phần còn lại để
+#  build nhanh và KHÔNG bao giờ đưa bí mật/cert vào image.
+# ============================================================================
+
+# Bí mật & cấu hình nhạy cảm — TUYỆT ĐỐI không vào image
+secrets/
+infra/nginx/certs/
+.env
+.env.*
+*.pem
+*.key
+
+# Môi trường phát triển & VCS
+.git/
+.gitignore
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.python-version
+uv.lock
+
+# Nội dung không cần trong image service
+docs/
+web/
+k6/
+backup/
+scripts/
+Makefile
+README.md
+docker-compose*.yml
+pyproject.toml
+
+# Logs & file tạm
+*.log
+*.tmp
+.DS_Store
+Thumbs.db

@@ -1,0 +1,72 @@
+# ============================================================================
+#  DOCKERFILE DÙNG CHUNG cho cả 8 microservice
+#  Nguyên tắc: cùng 1 image cho mọi service, khác nhau ở biến SERVICE_NAME.
+#  -> Giảm số image, đảm bảo mọi service có cùng phiên bản thư viện.
+# ============================================================================
+
+# ---------- Giai đoạn 1: BUILD -------------------------------------------
+FROM python:3.12-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /build
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# ⭐ COPY requirements TRƯỚC khi copy source.
+#   Docker chỉ cache lớp này khi requirements.txt đổi → build nhanh hơn rất nhiều
+#   (thay đổi code không làm mất cache dependency).
+COPY services/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+
+# ---------- Giai đoạn 2: RUNTIME -----------------------------------------
+FROM python:3.12-slim AS runtime
+
+LABEL org.opencontainers.image.title="QLPT Microservice" \
+      org.opencontainers.image.description="Quản lý phòng trọ - Microservice trên Docker" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.vendor="QLPT"
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    PATH="/opt/venv/bin:$PATH" \
+    PORT=8000
+
+WORKDIR /app
+
+# ⭐ User KHÔNG phải root
+RUN groupadd --system --gid 10001 app \
+ && useradd  --system --uid 10001 --gid app --home-dir /app --shell /usr/sbin/nologin app
+
+# Chỉ cài thứ thực sự cần; --no-install-recommends giữ ảnh nhỏ
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+        curl ca-certificates tzdata \
+ && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime 2>/dev/null || true \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /opt/venv /opt/venv
+COPY --chown=app:app services/ /app/
+
+# Thư mục ghi tạm (read_only: true nên buộc phải khai báo)
+RUN mkdir -p /tmp/app && chown app:app /tmp/app
+
+USER app
+
+EXPOSE 8000
+
+# ⭐ start_period 20s: tránh restart loop lúc khởi động
+HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+    CMD curl -fsS "http://localhost:${PORT}/health" || exit 1
+
+# ⭐ 1 worker / container. Mở rộng bằng nhiều container, KHÔNG bằng nhiều worker.
+#    --proxy-headers + forwarded-allow-ips để lấy đúng IP client sau nginx.
+CMD ["sh", "-c", "exec uvicorn main:app \
+     --host 0.0.0.0 --port ${PORT} --workers 1 \
+     --proxy-headers --forwarded-allow-ips '*' \
+     --timeout-keep-alive 65 --limit-concurrency 200"]

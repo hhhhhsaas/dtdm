@@ -1,0 +1,100 @@
+# ============================================================================
+#  PROMETHEUS — thu thập metrics từ toàn bộ hệ thống
+#  Mô hình PULL: Prometheus tự định kỳ kéo metrics từ từng target.
+# ============================================================================
+global:
+  scrape_interval:     15s          # ⭐ chính xác hơn 60s mặc định để bắt lỗi ngắn
+  scrape_timeout:      10s
+  evaluation_interval: 15s
+  external_labels:
+    env: production
+    system: qlpt
+    cloud: self-hosted-ubuntu
+
+# ---- Cảnh báo: đánh giá rule mỗi 15s, giữ dữ liệu 15 ngày ----------------
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+# ---- Lưu trữ tổng hợp giúp truy vấn nhanh hơn nhiều lần --------------------
+storage:
+  tsdb:
+    out_of_order_time_window: 30m
+
+# ============================================================================
+#  JOB THU THẬP — bắt buộc nằm dưới khóa `scrape_configs:`
+#  (đặt job ở top-level làm YAML sai: mapping rồi lại đến sequence)
+# ============================================================================
+scrape_configs:
+
+  # ---- 8 microservice + scheduler đều đặt endpoint /metrics -----------------
+  - job_name: microservices
+    metrics_path: /metrics
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - auth:8001
+          - room:8002
+          - tenant:8003
+          - contract:8004
+          - billing:8005
+          - notification:8006
+          - maintenance:8007
+          - report:8008
+          # Scheduler KHÔNG phải microservice nhưng vẫn xuất /metrics
+          # (scheduler_job_runs_total, scheduler_job_last_error_timestamp).
+          # ⭐ Không cào được chỗ này thì job hỏng lúc 2h sáng là VÔ HÌNH.
+          - scheduler:8009
+        labels:
+          tier: application
+
+  # ---- Cơ sở dữ liệu & hạ tầng (exporter đặt chung với container) ----------
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+        labels: { tier: database }
+
+  - job_name: redis
+    static_configs:
+      - targets: ["redis:9121"]
+        labels: { tier: cache }
+
+  - job_name: rabbitmq
+    static_configs:
+      - targets: ["rabbitmq:9419"]
+        labels: { tier: messaging }
+
+  # ---- Máy chủ Ubuntu -------------------------------------------------------
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+        labels: { tier: infrastructure }
+
+  # ---- Tài nguyên container -------------------------------------------------
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+        labels: { tier: infrastructure }
+
+  # ---- Nginx (module stub) --------------------------------------------------
+  - job_name: nginx
+    static_configs:
+      - targets: ["nginx-exporter:9113"]
+        labels: { tier: edge }
+
+  # ---- Blackbox exporter: kiểm tra điểm còn sống không ---------------------
+  - job_name: blackbox-http
+    metrics_path: /probe
+    params: { module: [http_2xx] }
+    static_configs:
+      - targets:
+          - http://auth:8001/health
+          - http://room:8002/health
+          - http://billing:8005/health
+          - http://localhost/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

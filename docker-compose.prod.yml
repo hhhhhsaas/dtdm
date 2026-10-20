@@ -1,0 +1,147 @@
+# ============================================================================
+#  DOCKER COMPOSE — LỚP PRODUCTION (overlay, dùng KÈM docker-compose.yml)
+#
+#  Cách dùng:
+#     docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#    hoặc:
+#     make prod-up
+#
+#  Khác biệt so với docker-compose.yml (dev / triển khai giả lập):
+#    1. restart: always  — container tự bật lại TRONG MỌI tình huống
+#                          (kể cả khi daemon Docker lỗi — không như
+#                          unless-stopped)
+#    2. deploy.resources.reservations — CAM KẾT CPU/RAM tối thiểu cho từng
+#       service: 21 container chạy chung 1 host, nếu không "giữ chỗ" thì
+#       service nhỏ dễ bị đói tài nguyên khi billing chạy lúc mùng 1.
+#    3. init: true  — chạy tini làm tiến trình init trong container, chống
+#       zombie process (uvicorn sinh process con).
+#
+#  GIỮ NGUYÊN từ base: cổng service chỉ bind 127.0.0.1, bí mật qua
+#  secrets/, read_only, cap_drop, healthcheck, network 3 lớp (edge/app/data),
+#  giới hạn dung lượng log, giới hạn RAM/CPU sàn hiện có.
+#
+#  ⚠️  Cơ chế gộp của Compose v2 (merge khi dùng nhiều -f):
+#      - Scalar (restart)      : file sau thay thế
+#      - Map   (deploy, logging): gộp đệ quy — deploy.resources.limits của
+#        base VẪN ĐƯỢC GIỮ, overlay chỉ THÊM reservations
+#      - List  (ports, secrets): file sau thay thế → KHÔNG khai lại ở đây
+# ============================================================================
+
+name: qlpt
+
+# Cấu hình chung cho 8 microservice (gộp chồng lên x-microservice của base)
+x-prod-app: &prod-app
+  restart: always
+  init: true
+  deploy:
+    resources:
+      reservations: { cpus: "0.20", memory: 384M }
+
+services:
+
+  # =========================================================================
+  #  LỚP BIÊN
+  # =========================================================================
+  nginx:
+    restart: always
+    init: true
+    deploy:
+      resources:
+        limits:       { cpus: "0.50", memory: 256M }
+        reservations: { cpus: "0.10", memory: 128M }
+
+  # =========================================================================
+  #  LỚP DỮ LIỆU
+  # =========================================================================
+  postgres:
+    restart: always
+    deploy:
+      resources:
+        limits:       { cpus: "1.50", memory: 3G }
+        reservations: { cpus: "0.50", memory: 1G }
+
+  redis:
+    restart: always
+    deploy:
+      resources:
+        limits:       { cpus: "0.25", memory: 512M }
+        reservations: { cpus: "0.10", memory: 256M }
+
+  rabbitmq:
+    restart: always
+    deploy:
+      resources:
+        limits:       { cpus: "0.25", memory: 512M }
+        reservations: { cpus: "0.10", memory: 256M }
+
+  minio:
+    restart: always
+    deploy:
+      resources:
+        limits:       { cpus: "0.50", memory: 512M }
+        reservations: { cpus: "0.10", memory: 256M }
+
+  # =========================================================================
+  #  8 MICROSERVICE — thêm restart: always + init + reservation
+  #  (limits chuẩn giữ nguyên từ base qua cơ chế gộp map)
+  # =========================================================================
+  auth:         { <<: *prod-app }
+  room:         { <<: *prod-app }
+  tenant:       { <<: *prod-app }
+  contract:     { <<: *prod-app }
+  maintenance:  { <<: *prod-app }
+  notification: { <<: *prod-app }
+  report:       { <<: *prod-app }
+
+  # billing là service nặng nhất (tính tiền hàng loạt lúc mùng 1)
+  # → reservation cao hơn để không bị service khác "giành" CPU.
+  billing:
+    restart: always
+    init: true
+    deploy:
+      resources:
+        limits:       { cpus: "2.00", memory: 1024M }
+        reservations: { cpus: "0.75", memory: 640M }
+
+  scheduler:
+    restart: always
+    init: true
+    deploy:
+      resources:
+        limits:       { cpus: "0.25", memory: 256M }
+        reservations: { cpus: "0.10", memory: 192M }
+
+  # =========================================================================
+  #  LỚP GIÁM SÁT
+  # =========================================================================
+  prometheus:
+    restart: always
+    deploy:
+      resources:
+        limits:       { cpus: "0.25", memory: 512M }
+        reservations: { cpus: "0.10", memory: 256M }
+
+  grafana:
+    restart: always
+    deploy:
+      resources:
+        limits:       { cpus: "0.25", memory: 256M }
+        reservations: { cpus: "0.10", memory: 128M }
+
+  loki:
+    restart: always
+    deploy:
+      resources:
+        limits:       { cpus: "0.25", memory: 384M }
+        reservations: { cpus: "0.10", memory: 192M }
+
+  promtail:
+    restart: always
+
+  node-exporter:
+    restart: always
+
+  cadvisor:
+    restart: always
+
+  # cleanup (tools profile) — không đổi: chạy thủ công, không dùng production.

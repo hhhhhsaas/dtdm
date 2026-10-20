@@ -1,0 +1,39 @@
+# ============================================================================
+#  PROMTAIL — thu thập log từ tất cả container Docker
+#  Log luôn ghi ra STDOUT (không ghi file trong container) → promtail đọc từ
+#  /var/lib/docker/containers/<id>/*.log. Đây là chuẩn của 12factor.
+# ============================================================================
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+    batchwait: 1s
+    batchsize: 1048576
+    backoff_config:
+      min_period: 500ms
+      max_period: 5m
+      max_retries: 10
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 15s
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container'
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: 'service'
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_project']
+        target_label: 'project'
+      # Bỏ qua log hệ thống không cần giữ
+      - source_labels: ['container']
+        regex: 'qlpt-(prometheus|promtail|loki|cadvisor|node-exporter)'
+        action: 'drop'

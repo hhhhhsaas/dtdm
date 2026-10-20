@@ -1,0 +1,50 @@
+# ============================================================================
+#  .gitignore — BẢO MẬT TRƯỚC TIÊN
+#  Chạy `git add .` mà KHÔNG có file này = đẩy mật khẩu lên repo.
+#  Vì sao bí mật nằm ở đây (không phải .env): docker-compose.yml đọc file
+#  bí mật qua `secrets:` nên Dockerfile/build context không bao giờ thấy
+#  chúng — "secrets as files" theo chuẩn Docker Swarm. Xem docs/06-bao-mat.md.
+# ============================================================================
+
+# -------------------- BÍ MẬT & CẤU HÌNH (KHÔNG BAO GIỜ COMMIT) -------------
+secrets/
+.env
+*.env
+!.env.example
+
+# -------------------- MÔI TRƯỜNG PHÁT TRIỂN -------------------------------
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# -------------------- DỮ LIỆU / LOG / RÁC --------------------------------
+*.log
+logs/
+backup/
+*.sql
+*.sql.gz
+*.tar.gz
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+
+# -------------------- IDE / EDITOR ----------------------------------------
+.idea/
+.vscode/
+*.code-workspace
+
+# -------------------- CHỨNG CHỈ / KHÓA -----------------------------------
+infra/nginx/certs/
+*.pem
+*.key
+certbot/

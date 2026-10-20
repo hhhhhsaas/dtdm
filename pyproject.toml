@@ -1,0 +1,133 @@
+# =============================================================================
+#  Cấu hình dự án — hệ thống quản lý phòng trọ (Microservice)
+# =============================================================================
+#  File này phục vụ 2 mục đích:
+#    1. Khai báo dependency chính (để `pip install -e .` / trình chỉnh sự hiểu biết)
+#    2. Cấu hình ruff — chất lượng code
+#
+#  ⚠️  KHÔNG cài phần mềm vào image runtime từ file này. Image dùng
+#     `services/requirements.txt` với phiên bản ghim chính xác, để build
+#     lặp lại được. File này chỉ để IDE và ruff đọc.
+# =============================================================================
+
+[project]
+name = "ql-phong-tro"
+version = "1.0.0"
+description = "Hệ thống quản lý phòng trọ theo kiến trúc Microservice trên nền tảng điện toán đám mây"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Nhóm đồ án Điện toán đám mây" }]
+
+# Phiên bản thư viện cốt lõi. Phần còn lại xem `services/requirements.txt`.
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.7",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "redis>=5.2",
+    "aio-pika>=9.5",
+    "pyjwt>=2.14",
+    "argon2-cffi>=23.1",
+    "cryptography>=44.0",
+    "minio>=7.2",
+    "apscheduler>=3.11",
+    "jinja2>=3.1",
+    "prometheus-client>=0.21",
+    "httpx>=0.28",
+    "python-dateutil>=2.9",
+    "python-multipart>=0.0.30",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3", "pytest-asyncio>=0.25", "pytest-cov>=6.0", "respx>=0.22", "ruff>=0.8"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [".venv", "__pycache__", "alembic/versions"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle — sai quy ước, thừa khoảng trắng
+    "F",    # pyflakes — tên biến không tồn tại, import thừa
+    "W",    # warnings
+    "I",    # isort — thứ tự import
+    "N",    # pep8-naming
+    "UP",   # pyupgrade — cú pháp tân hơn
+    "B",    # bugbear — lỗi tiềm ẩn hay gặp
+    "C4",   # comprehensions
+    "SIM",  # simplify
+    "RUF",  # ruff-specific
+]
+ignore = [
+    # FastAPI bắt buộc dùng `Query(...)`/`Depends(...)` trong default của
+    # tham số. B008 cảnh báo điều này trên MỌI endpoint nên vô nghĩa.
+    "B008",
+
+    # `COM812`/`COM819` xung đột với formatter; ta không dùng ruff format
+    # cho file tiếng Việt có comment dài.
+    "COM812",
+    "COM819",
+
+    # Dòng dài trong docstring tiếng Việt: cắt làm mất nghĩa.
+    "E501",
+
+    # Biến có tên trùng với thuộc tính là chấp nhận được ở model ORM.
+    "N815",
+
+    # ⭐ RUF001/2/3 cảnh báo "ký tự mơ hồ" trong comment & string: dấu – — ·
+    #    và dấu nháy cong. Trong tiếng Việt chúng là DẤU CÂU ĐÚNG CHÍNH TẢ
+    #    (ví dụ "tiền phòng 2–3 triệu", "từ A đến B"), không phải lỗi gõ.
+    #    Cảnh báo này sinh hàng chục lỗi giả trên mọi tài liệu/comment
+    #    tiếng Việt và làm nhiễu, nên tắt hẳn.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Script vận hành: sys.path phải được thêm thủ công, nên E402 hợp lý.
+"services/scripts/*" = ["E402"]
+# Test: fixture trùng tên là bình thường.
+"tests/*" = ["B011", "S101"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["channels", "common", "models", "pricing", "schemas"]
+combine-as-imports = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+# =============================================================================
+#  Test
+# =============================================================================
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["services/tests"]
+python_files = ["test_*.py"]
+addopts = "-ra --strict-markers"
+filterwarnings = ["error::DeprecationWarning:ql_phong_tro.*"]
+
+# =============================================================================
+#  Coverage — ngưỡng dưới để chặn hồi quy
+# =============================================================================
+[tool.coverage.run]
+source = ["services"]
+omit = ["*/tests/*", "*/scripts/*", "*/__init__.py", "*/migrations/*"]
+
+[tool.coverage.report]
+fail_under = 70
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]

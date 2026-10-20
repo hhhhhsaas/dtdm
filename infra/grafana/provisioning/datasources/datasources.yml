@@ -1,0 +1,31 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 15s
+      httpMethod: POST
+
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      maxLines: 1000
+
+  - name: PostgreSQL
+    type: postgres
+    access: proxy
+    url: qlpt-postgres:5432
+    database: db_report
+    user: qlpt
+    secureJsonData:
+      password: $DB_PASSWORD
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false

@@ -1,0 +1,245 @@
+# ============================================================================
+#  QUY TẮC CẢNH BÁO (Alerting Rules)
+#  Triết lý: cảnh báo phải DẪN ĐẾN HÀNH ĐỘNG cụ thể.
+#  Cảnh báo nào không ai xử lý được thì không nên tồn tại (alert fatigue).
+# ============================================================================
+groups:
+
+# ---------------------------------------------------------------- SỐ SỐNG --
+- name: qlpt_availability
+  rules:
+
+  # ⭐ Cảnh báo quan trọng nhất: service chết hoàn toàn
+  - alert: ServiceDown
+    expr: up{job="microservices"} == 0
+    for: 2m
+    labels:
+      severity: critical
+      service: "{{ $labels.instance }}"
+    annotations:
+      summary: "🔴 Service {{ $labels.instance }} KHÔNG PHẢN HỒI > 2 phút"
+      description: >-
+        Service {{ $labels.instance }} đã down 2 phút liên tiếp.
+        Hành động: `docker compose logs --tail 100 {{ $labels.instance }}`
+        rồi `docker compose restart {{ $labels.instance }}`
+      runbook: "docs/07-van-hanh-hieu-nang-mo-rong.md#sự-cố-service-down"
+
+  - alert: AllServicesDown
+    expr: count(up{job="microservices"} == 1) == 0
+    for: 30s
+    labels: { severity: disaster }
+    annotations:
+      summary: "🟥 KHÔNG CÒN MICROSERVICE NÀO SỐNG"
+      description: "Toàn bộ 8 service đều down. Kiểm tra Docker daemon và tài nguyên máy."
+
+  - alert: ServerDown
+    expr: node_up == 0
+    for: 1m
+    labels: { severity: critical }
+    annotations:
+      summary: "🔴 Máy chủ Ubuntu không phản hồi metrics"
+
+# ------------------------------------------------------------- HIỆU NĂNG ----
+- name: qlpt_performance
+  rules:
+
+  # p95 latency vượt ngưỡng đã cam kết trong SLA (mục 1.2.2)
+  - alert: HighLatencyP95
+    expr: |
+      histogram_quantile(0.95,
+        sum by (le, service) (rate(http_request_duration_seconds_bucket[5m]))
+      ) > 0.5
+    for: 5m
+    labels: { severity: warning }
+    annotations:
+      summary: "🐌 p95 latency của {{ $labels.service }} = {{ $value | humanizeDuration }}"
+      description: >-
+        Vượt SLA 500ms trong 5 phút liên tiếp.
+        Kiểm tra: truy vấn chậm (log_min_duration_statement),
+        thiếu index, hoặc downstream service bị nghẽn.
+
+  - alert: HighErrorRate
+    expr: |
+      sum by (service) (rate(http_requests_total{status=~"5.."}[5m]))
+      / sum by (service) (rate(http_requests_total[5m]))
+      > 0.05
+    for: 3m
+    labels: { severity: warning }
+    annotations:
+      summary: "❌ Tỷ lệ lỗi 5xx của {{ $labels.service }} = {{ $value | humanizePercentage }}"
+      description: "Trên 5% request trả về lỗi server trong 3 phút."
+
+  - alert: HighRequestLatencyRate
+    expr: |
+      histogram_quantile(0.99,
+        sum by (le) (rate(http_request_duration_seconds_bucket[5m]))) > 2
+    for: 10m
+    labels: { severity: warning }
+    annotations:
+      summary: "🐢 p99 latency toàn hệ thống = {{ $value | humanizeDuration }}"
+
+# ----------------------------------------------------------------- TÀI NGUYÊN
+- name: qlpt_resources
+  rules:
+
+  - alert: HostMemoryHigh
+    expr: |
+      (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 0.90
+    for: 5m
+    labels: { severity: warning }
+    annotations:
+      summary: "🧠 RAM còn {{ $value | humanizePercentage }} — sắp đầy"
+      description: >-
+        Ưu tiên: kiểm tra container nào phình bộ nhớ (`docker stats`).
+        Cân nhắc giới hạn lại `deploy.resources.limits`.
+
+  - alert: HostMemoryCritical
+    expr: |
+      (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 0.96
+    for: 2m
+    labels: { severity: critical }
+    annotations:
+      summary: "🧠 RAM GẦN CẠN — có nguy cơ bị OOM Killer giết container"
+
+  - alert: DiskSpaceHigh
+    expr: |
+      (1 - node_filesystem_avail_bytes{mountpoint="/"}
+         / node_filesystem_size_bytes{mountpoint="/"}) > 0.85
+    for: 5m
+    labels: { severity: warning }
+    annotations:
+      summary: "💾 Đĩa / đã dùng {{ $value | humanizePercentage }}"
+      description: >-
+        Cần giải phóng: `docker system prune -a --filter until=168h`,
+        dọn bản sao lưu cũ trong /backup, hoặc log Loki cũ.
+
+  - alert: DiskSpaceCritical
+    expr: |
+      (1 - node_filesystem_avail_bytes{mountpoint="/"}
+         / node_filesystem_size_bytes{mountpoint="/"}) > 0.93
+    for: 2m
+    labels: { severity: critical }
+    annotations:
+      summary: "💾 Đĩa GẦN ĐẦY — PostgreSQL sẽ TỪ CHỐI ghi"
+
+  - alert: HostCPULoadHigh
+    expr: |
+      node_load15 / count(node_cpu_seconds_total{mode="idle"}) > 2
+    for: 10m
+    labels: { severity: warning }
+    annotations:
+      summary: "⚙️ Load average 15 phút cao — CPU quá tải"
+
+  - alert: ContainerRestarting
+    expr: |
+      rate(container_last_seen{container_name=~"qlpt-.*"}[15m]) == 0
+      and
+      changes(container_start_time_seconds{container_name=~"qlpt-.*"}[15m]) > 0
+    for: 1m
+    labels: { severity: warning }
+    annotations:
+      summary: "🔄 {{ $labels.container_name }} đang khởi động lại liên tục"
+      description: >-
+        Có thể do: healthcheck quá chặt, thiếu tài nguyên,
+        hoặc phụ thuộc (dependency) chưa sẵn sàng. Xem `start_period` trong compose.
+
+# -------------------------------------------------------------- CƠ SỞ DỮ LIỆU
+- name: qlpt_database
+  rules:
+
+  - alert: PostgresDown
+    expr: pg_up == 0
+    for: 1m
+    labels: { severity: critical }
+    annotations:
+      summary: "🗄️ PostgreSQL không sẵn sàng"
+
+  - alert: PostgresConnectionsHigh
+    expr: |
+      sum(pg_stat_activity_count) / max(pg_settings_max_connections) > 0.80
+    for: 3m
+    labels: { severity: warning }
+    annotations:
+      summary: "🔌 Đang dùng {{ $value | humanizePercentage }} connection PostgreSQL"
+      description: "Giảm SQL_POOL_SIZE hoặc thêm PgBouncer."
+
+  - alert: PostgresReplicationLagHigh
+    expr: pg_replication_lag_seconds > 30
+    for: 5m
+    labels: { severity: warning }
+    annotations:
+      summary: "🗄️ Sao lưu trễ {{ $value }} giây"
+
+  - alert: PostgresDeadTuplesHigh
+    expr: |
+      sum(pg_stat_user_tables_n_dead_tup)
+      / (sum(pg_stat_user_tables_n_live_tup) + sum(pg_stat_user_tables_n_dead_tup)) > 0.2
+    for: 15m
+    labels: { severity: warning }
+    annotations:
+      summary: "🧹 20% bảng là bản ghi chết — VACUUM chậm"
+      description: "Cân nhắc tăng autovacuum_vacuum_scale_factor hoặc chạy VACUUM ANALYZE thủ công."
+
+  - alert: QueryTooSlow
+    expr: pg_stat_activity_max_tx_duration{state="active"} > 30
+    for: 1m
+    labels: { severity: warning }
+    annotations:
+      summary: "🐌 Truy vấn đang chạy > 30 giây"
+      description: "Xem chi tiết: SELECT * FROM pg_stat_activity WHERE state='active';"
+
+# ------------------------------------------------------------ MESSAGING ------
+- name: qlpt_messaging
+  rules:
+
+  - alert: RabbitMQQueueBacklog
+    expr: rabbitmq_queue_messages_ready > 1000
+    for: 5m
+    labels: { severity: warning }
+    annotations:
+      summary: "📨 Hàng đợi {{ $labels.queue }} tồn đọng {{ $value }} message"
+      description: "Consumer chậm hoặc chết. Kiểm tra `docker compose logs notification`."
+
+  - alert: DeadLetterQueueNotEmpty
+    expr: rabbitmq_queue_messages_ready{queue=~".*dlq.*"} > 0
+    for: 2m
+    labels: { severity: warning }
+    annotations:
+      summary: "💀 Dead Letter Queue KHÔNG RỖNG — có message bị xử lý lỗi"
+      description: >-
+        Message trong DLQ = sự kiện nghiệp vụ đã thất bại.
+        Phải xem thủ công trong RabbitMQ UI và xử lý lại, không được bỏ qua.
+
+  - alert: RabbitMQConsumersMissing
+    expr: rabbitmq_queue_consumers < 1 and rabbitmq_queue_messages > 0
+    for: 5m
+    labels: { severity: critical }
+    annotations:
+      summary: "❌ Hàng đợi {{ $labels.queue }} KHÔNG CÓ consumer nào"
+      description: "Không gì được xử lý. Kiểm tra service consumer đã chạy chưa."
+
+# ---------------------------------------------------------------- CẢNH BÁO KHÁC
+- name: qlpt_business
+  rules:
+
+  - alert: OutboxBacklog
+    expr: outbox_pending_events > 500
+    for: 10m
+    labels: { severity: warning }
+    annotations:
+      summary: "📤 {{ $labels.service }} có {{ $value }} event chưa gửi trong outbox"
+      description: "RabbitMQ có thể đang sập hoặc publisher bị kẹt."
+
+  - alert: IdempotencyLockStuck
+    expr: idempotency_lock_age_seconds > 900
+    for: 5m
+    labels: { severity: warning }
+    annotations:
+      summary: "🔒 Khóa idempotency bị kẹt hơn 15 phút trong {{ $labels.service }}"
+
+  - alert: HealthCheckFailing
+    expr: healthcheck_status{status="fail"} == 1
+    for: 3m
+    labels: { severity: warning }
+    annotations:
+      summary: "❤️ Health check của {{ $labels.service }} đang FAIL"

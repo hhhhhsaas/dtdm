@@ -1,0 +1,628 @@
+# ============================================================================
+#  HỆ THỐNG QUẢN LÝ PHÒNG TRỌ — DOCKER COMPOSE
+#  Môi trường: triển khai self-hosted trên Ubuntu Server (Private Cloud)
+#
+#  Thứ tự khởi động được đảm bảo bằng: depends_on + condition: service_healthy
+#  (KHÔNG dùng depends_on đơn thuần — nó chỉ chờ container start, chưa chờ sẵn sàng)
+# ============================================================================
+
+name: qlpt
+
+# ----------------------------------------------------------------------------
+#  NETWORK — phân vùng 3 lớp theo nguyên tắc zero-trust
+# ----------------------------------------------------------------------------
+networks:
+  # Chỉ nginx + các thành phần cần public mới nằm ở đây
+  qlpt-edge:
+    driver: bridge
+  # 8 microservice + RabbitMQ. KHÔNG public.
+  qlpt-app:
+    driver: bridge
+    internal: false
+  # Dữ liệu: CHỈ app được truy cập. Không có đường ra Internet.
+  qlpt-data:
+    driver: bridge
+    internal: true          # ⭐ internal: true = không có gateway ra ngoài
+  # Giám sát
+  qlpt-monitor:
+    driver: bridge
+
+volumes:
+  pg_data:            {}
+  redis_data:         {}
+  rabbitmq_data:      {}
+  minio_data:         {}
+  loki_data:          {}
+  prometheus_data:    {}
+  grafana_data:       {}
+  billing_cache:      {}
+  certbot_webroot:    {}
+
+# ----------------------------------------------------------------------------
+#  SECRETS — không đặt mật khẩu trong .env hay trong compose
+#  Tạo file trước khi up:  bash scripts/01-bootstrap-ubuntu.sh
+# ----------------------------------------------------------------------------
+secrets:
+  db_password:    { file: ./secrets/db_password.txt }
+  jwt_secret:     { file: ./secrets/jwt_secret.txt }
+  admin_password: { file: ./secrets/admin_password.txt }
+  minio_root_password: { file: ./secrets/minio_root_password.txt }
+  rabbitmq_password:   { file: ./secrets/rabbitmq_password.txt }
+  # Khoá AES-256-GCM chỉ tenant-service cần (mã hóa CCCD). Cấp cho service
+  # khác chỉ để "cho đủ" là mở rộng bề mặt tấn công vô nghĩa.
+  data_encryption_key: { file: ./secrets/data_encryption_key.txt }
+
+x-common-env: &common-env
+  TZ: Asia/Ho_Chi_Minh
+  PYTHONUNBUFFERED: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+  OTEL_SERVICE_NAME: ${SERVICE_NAME:-unknown}
+
+# Cấu hình chung cho mọi microservice
+x-microservice: &microservice
+  restart: unless-stopped
+  secrets:
+    - db_password
+    - jwt_secret
+  environment: *common-env
+  depends_on:
+    postgres:   { condition: service_healthy }
+    redis:      { condition: service_healthy }
+    rabbitmq:   { condition: service_healthy }
+  networks: [qlpt-app, qlpt-data]
+  security_opt:
+    - no-new-privileges:true
+  cap_drop: [ALL]
+  read_only: true
+  tmpfs:
+    - /tmp:size=64M
+  deploy:
+    resources:
+      limits:       { cpus: "0.50", memory: 512M }
+      reservations: { cpus: "0.10", memory: 256M }
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }   # ⭐ tránh đầy đĩa do log
+
+services:
+
+  # ===========================================================================
+  #  LỚP BIÊN
+  # ===========================================================================
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: qlpt-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./infra/nginx/proxy_common.conf:/etc/nginx/proxy_common.conf:ro
+      - ./infra/nginx/certs:/etc/nginx/certs:ro
+      - ./web:/srv/web:ro
+      - certbot_webroot:/var/www/certbot
+    networks: [qlpt-edge, qlpt-app, qlpt-monitor]
+    depends_on: [auth, room, tenant, contract, billing, notification, maintenance, report]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE, CHOWN, SETGID, SETUID]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=64M
+      - /var/run:size=8M
+      - /tmp:size=32M
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 256M }
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # ===========================================================================
+  #  LỚP DỮ LIỆU — internal: true, KHÔNG public
+  # ===========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: qlpt-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-qlpt}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      POSTGRES_INITDB_ARGS: "--data-checksums --encoding=UTF8 --locale=C"
+      PGDATA: /var/lib/postgresql/data/pgdata
+      TZ: Asia/Ho_Chi_Minh
+    secrets: [db_password]
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+      - ./infra/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+    networks: [qlpt-data]
+    # KHÔNG publish port ra host. Chỉ truy cập được từ trong network qlpt-data.
+    deploy:
+      resources:
+        limits: { cpus: "1.50", memory: 3G }
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-qlpt} -d db_auth"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s      # ⭐ PostgreSQL cần thời gian khởi tạo lần đầu
+    shm_size: 1gb
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  redis:
+    image: redis:7-alpine
+    container_name: qlpt-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD:?Cần đặt REDIS_PASSWORD trong .env}
+      - --maxmemory
+      - 384mb
+      - --maxmemory-policy
+      - allkeys-lru        # ⭐ tự đẩy key cũ khi đầy bộ nhớ
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+    volumes: [redis_data:/data]
+    networks: [qlpt-data]
+    deploy: { resources: { limits: { cpus: "0.25", memory: 512M } } }
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    security_opt: [no-new-privileges:true]
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: qlpt-rabbitmq
+    # Ghim hostname → node name luôn là rabbit@qlpt-rabbitmq (mặc định Docker
+    # dùng container-id làm hostname, làm node đổi tên mỗi lần recreate →
+    # mnesia tạo thư mục mới, mất định danh).
+    hostname: qlpt-rabbitmq
+    restart: unless-stopped
+    environment:
+      # ⚠️ image RabbitMQ deprecate RABBITMQ_DEFAULT_PASS_FILE (lỗi khi khởi
+      #    động). Dùng biến THƯỜNG; giá trị lấy từ secrets/rabbitmq_password.txt
+      #    được deploy script ghi vào .env (RABBITMQ_DEFAULT_PASS).
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-qlpt}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?Cần RABBITMQ_DEFAULT_PASS trong .env}
+      RABBITMQ_DEFAULT_VHOST: /qlpt
+    secrets: [rabbitmq_password]
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./infra/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - ./infra/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    networks: [qlpt-app, qlpt-data]
+    # Chỉ mở UI quản trị cho mạng nội bộ
+    ports: ["127.0.0.1:15672:15672"]
+    deploy: { resources: { limits: { cpus: "0.25", memory: 512M } } }
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      # ⚠️ `rabbitmq-diagnostics` khởi động cả 1 Erlang VM mới để kết nối →
+      #    mất ~10s khi CPU bị giới hạn. Timeout phải > thời gian này, nếu
+      #    không healthcheck luôn "exceeded timeout" → container mãi unhealthy
+      #    dù broker đã chạy ("fully booted and running").
+      interval: 30s
+      timeout: 30s
+      retries: 5
+      start_period: 90s
+    security_opt: [no-new-privileges:true]
+    logging: { driver: json-file, options: { max-size: "20m", max-file: "3" } }
+
+  minio:
+    # ⚠️ 09/2026: MinIO đã XÓA toàn bộ image khỏi Docker Hub (minio/minio)
+    #    và quay.io, đồng thời chặn tải binary từ dl.min.io (410).
+    #    → dùng image Chainguard (upstream MinIO, built bởi Chainguard/wolfi,
+    #      chứa sẵn minio + mc cho healthcheck). Pin theo SHA digest để tái
+    #      tạo ổn định. Muốn "latest" thay bằng: cgr.dev/chainguard/minio:latest
+    image: cgr.dev/chainguard/minio@sha256:6476f81b9739912fa9f50ceae2bb049a30336527cccd24beccfbeb4145f8f696
+    container_name: qlpt-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-qlptadmin}
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
+    secrets: [minio_root_password]
+    volumes: [minio_data:/data]
+    networks: [qlpt-data, qlpt-monitor]
+    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
+    deploy: { resources: { limits: { cpus: "0.50", memory: 512M } } }
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    security_opt: [no-new-privileges:true]
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+
+  # ===========================================================================
+  #  8 MICROSERVICE
+  # ===========================================================================
+  auth:
+    build: { context: ., dockerfile: infra/docker/Dockerfile.service }
+    container_name: qlpt-auth
+    working_dir: /app/auth
+    environment:
+      <<: *common-env
+      SERVICE_NAME: auth-service
+      PORT: "8001"
+      DB_NAME: db_auth
+      DATABASE_URL: postgresql+asyncpg://${DB_USER:-qlpt}@postgres:5432/db_auth
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-qlpt}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//qlpt
+    secrets: [db_password, jwt_secret, admin_password]
+    ports: ["127.0.0.1:8001:8001"]
+    <<: *microservice
+    healthcheck: &health8001
+      test: ["CMD", "curl", "-fsS", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  room:
+    build: { context: ., dockerfile: infra/docker/Dockerfile.service }
+    container_name: qlpt-room
+    working_dir: /app/room
+    environment:
+      <<: *common-env
+      SERVICE_NAME: room-service
+      PORT: "8002"
+      DB_NAME: db_room
+      DATABASE_URL: postgresql+asyncpg://${DB_USER:-qlpt}@postgres:5432/db_room
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-qlpt}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//qlpt
+      TENANT_SERVICE_URL: http://tenant:8003
+      CONTRACT_SERVICE_URL: http://contract:8004
+    ports: ["127.0.0.1:8002:8002"]
+    <<: *microservice
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  tenant:
+    build: { context: ., dockerfile: infra/docker/Dockerfile.service }
+    container_name: qlpt-tenant
+    working_dir: /app/tenant
+    environment:
+      <<: *common-env
+      SERVICE_NAME: tenant-service
+      PORT: "8003"
+      DB_NAME: db_tenant
+      DATABASE_URL: postgresql+asyncpg://${DB_USER:-qlpt}@postgres:5432/db_tenant
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/2
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-qlpt}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//qlpt
+    # ⭐ Tenant là service DUY NHẤT được cấp khoá mã hóa dữ liệu: CCCD được
+    #    lưu dạng AES-256-GCM + blind index HMAC (xem common/crypto.py).
+    secrets: [db_password, jwt_secret, data_encryption_key]
+    ports: ["127.0.0.1:8003:8003"]
+    <<: *microservice
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  contract:
+    build: { context: ., dockerfile: infra/docker/Dockerfile.service }
+    container_name: qlpt-contract
+    working_dir: /app/contract
+    environment:
+      <<: *common-env
+      SERVICE_NAME: contract-service
+      PORT: "8004"
+      DB_NAME: db_contract
+      DATABASE_URL: postgresql+asyncpg://${DB_USER:-qlpt}@postgres:5432/db_contract
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/3
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-qlpt}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//qlpt
+      ROOM_SERVICE_URL: http://room:8002
+      TENANT_SERVICE_URL: http://tenant:8003
+    ports: ["127.0.0.1:8004:8004"]
+    <<: *microservice
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  billing:
+    build: { context: ., dockerfile: infra/docker/Dockerfile.service }
+    container_name: qlpt-billing
+    working_dir: /app/billing
+    environment:
+      <<: *common-env
+      SERVICE_NAME: billing-service
+      PORT: "8005"
+      DB_NAME: db_billing
+      DATABASE_URL: postgresql+asyncpg://${DB_USER:-qlpt}@postgres:5432/db_billing
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/4
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-qlpt}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//qlpt
+      CONTRACT_SERVICE_URL: http://contract:8004
+      ROOM_SERVICE_URL: http://room:8002
+      TENANT_SERVICE_URL: http://tenant:8003
+    ports: ["127.0.0.1:8005:8005"]
+    volumes: [billing_cache:/tmp/app]
+    <<: *microservice
+    deploy:
+      resources:
+        limits:       { cpus: "2.00", memory: 1024M }
+        reservations: { cpus: "0.50", memory: 512M }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  notification:
+    build: { context: ., dockerfile: infra/docker/Dockerfile.service }
+    container_name: qlpt-notification
+    working_dir: /app/notification
+    environment:
+      <<: *common-env
+      SERVICE_NAME: notification-service
+      PORT: "8006"
+      DB_NAME: db_notify
+      DATABASE_URL: postgresql+asyncpg://${DB_USER:-qlpt}@postgres:5432/db_notify
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/5
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-qlpt}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//qlpt
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      # Điều khiển job nền: để "off" khi chạy nhiều replica (chống gửi trùng)
+      RUN_SCHEDULER: "true"
+    ports: ["127.0.0.1:8006:8006"]
+    <<: *microservice
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8006/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  maintenance:
+    build: { context: ., dockerfile: infra/docker/Dockerfile.service }
+    container_name: qlpt-maintenance
+    working_dir: /app/maintenance
+    environment:
+      <<: *common-env
+      SERVICE_NAME: maintenance-service
+      PORT: "8007"
+      DB_NAME: db_maintenance
+      DATABASE_URL: postgresql+asyncpg://${DB_USER:-qlpt}@postgres:5432/db_maintenance
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/6
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-qlpt}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//qlpt
+      ROOM_SERVICE_URL: http://room:8002
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-qlptadmin}
+    ports: ["127.0.0.1:8007:8007"]
+    <<: *microservice
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8007/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  report:
+    build: { context: ., dockerfile: infra/docker/Dockerfile.service }
+    container_name: qlpt-report
+    working_dir: /app/report
+    environment:
+      <<: *common-env
+      SERVICE_NAME: report-service
+      PORT: "8008"
+      DB_NAME: db_report
+      DATABASE_URL: postgresql+asyncpg://${DB_USER:-qlpt}@postgres:5432/db_report
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/7
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-qlpt}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//qlpt
+    ports: ["127.0.0.1:8008:8008"]
+    <<: *microservice
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8008/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ===========================================================================
+  #  LỚP GIÁM SÁT
+  # ===========================================================================
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: qlpt-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    networks: [qlpt-app, qlpt-data, qlpt-monitor]
+    ports: ["127.0.0.1:9090:9090"]     # chỉ localhost, truy cập qua SSH tunnel
+    deploy: { resources: { limits: { cpus: "0.25", memory: 512M } } }
+    security_opt: [no-new-privileges:true]
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: qlpt-node-exporter
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    volumes: ["/:/host:ro,rslave"]
+    networks: [qlpt-monitor]
+    deploy: { resources: { limits: { cpus: "0.10", memory: 128M } } }
+    security_opt: [no-new-privileges:true]
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    container_name: qlpt-cadvisor
+    restart: unless-stopped
+    privileged: false
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks: [qlpt-monitor]
+    ports: ["127.0.0.1:8080:8080"]
+    deploy: { resources: { limits: { cpus: "0.10", memory: 128M } } }
+
+  loki:
+    image: grafana/loki:3.2.1
+    container_name: qlpt-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./infra/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    networks: [qlpt-monitor]
+    deploy: { resources: { limits: { cpus: "0.25", memory: 384M } } }
+    security_opt: [no-new-privileges:true]
+
+  promtail:
+    image: grafana/promtail:3.2.1
+    container_name: qlpt-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./infra/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [qlpt-monitor]
+    depends_on: [loki]
+    deploy: { resources: { limits: { cpus: "0.10", memory: 128M } } }
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: qlpt-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/admin_password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_INSTALL_PLUGINS: ""
+      GF_SERVER_ROOT_URL: https://${DOMAIN:-qlpt.local}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    secrets: [admin_password]
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks: [qlpt-monitor, qlpt-edge]
+    ports: ["3000:3000"]     # public nhưng có đăng nhập
+    deploy: { resources: { limits: { cpus: "0.25", memory: 256M } } }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    security_opt: [no-new-privileges:true]
+
+  # ===========================================================================
+  #  TRÌNH CHẠY JOB ĐỊNH KỲ — tách riêng, chạy đúng 1 bản
+  #
+  #  ⭐ Vì sao tách khỏi từng service?
+  #     Job nằm bên trong service mà service bị scale lên 3 replica thì job
+  #     chạy 3 lần → người thuê nhận 3 tin nhắn nhắc tiền vào 8h sáng.
+  #     Tách ra, chạy 1 bản, cộng thêm khoá phân tán Redis trong
+  #     services/scheduler/main.py để chống chạy trùng kể cả khi vô tình scale.
+  #
+  #  ⭐ Nó CÓ app HTTP (cổng 8009) chỉ với /health + /metrics:
+  #     - Docker HEALTHCHECK cần /health, nếu không sẽ bị gắn nhãn
+  #       `unhealthy` vĩnh viễn và giám sát báo động giả liên tục.
+  #  ⭐ Nhận đủ 5 secret như 8 service: nó KẾT NỐI TỚI chúng qua
+  #     /internal/v1/... mà những endpoint đó bắt buộc token role=SYSTEM
+  #     (ký bằng JWT_SECRET). Thiếu jwt_secret thì mọi job đều trả 401.
+  # ===========================================================================
+  scheduler:
+    build: { context: ., dockerfile: infra/docker/Dockerfile.service }
+    container_name: qlpt-scheduler
+    working_dir: /app/scheduler
+    restart: unless-stopped
+    # `python -m main` chứ không phải `python -m scheduler.main`: container đã
+    # đứng ở /app/scheduler (working_dir), nên `main` ở đây chính là
+    # scheduler. Dùng `scheduler.main` sẽ tìm nhầm vì PYTHONPATH=/app.
+    command: ["python", "-m", "main"]
+    environment:
+      <<: *common-env
+      SERVICE_NAME: scheduler
+      PORT: "8009"
+      # ⚠️ Scheduler KHÔNG dùng PostgreSQL. Biến này chỉ tồn tại vì `Settings`
+      #    bắt buộc có DATABASE_URL (validate lúc import) — cùng lý do mọi
+      #    process trong hệ thống đều phải có. Xem docs/06-bao-mat.md.
+      DB_NAME: db_billing
+      DATABASE_URL: postgresql+asyncpg://${DB_USER:-qlpt}@postgres:5432/db_billing
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      CONTRACT_SERVICE_URL: http://contract:8004
+      BILLING_SERVICE_URL: http://billing:8005
+      REPORT_SERVICE_URL: http://report:8008
+      # Tham số nghiệp vụ (xem services/common/config.py)
+      INVOICE_OVERDUE_GRACE_DAYS: "3"
+      CONTRACT_EXPIRING_LOOKAHEAD_DAYS: "30"
+      SCHEDULER_STARTUP_WAIT: "180"
+    secrets: [db_password, jwt_secret]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+      contract: { condition: service_healthy }
+      billing:  { condition: service_healthy }
+      report:   { condition: service_healthy }
+    networks: [qlpt-app, qlpt-data]
+    # Chỉ nằm trong qlpt-app (nội bộ) — KHÔNG publish cổng ra host như 8
+    # service kia, vì /health + /metrics không cần truy cập từ ngoài.
+    deploy: { resources: { limits: { cpus: "0.25", memory: 256M } } }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8009/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s      # job đăng ký sau bước chờ service, cho thêm chút
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: ["/tmp:size=32M"]
+    logging: { driver: json-file, options: { max-size: "20m", max-file: "5" } }
+
+  # ===========================================================================
+  #  CLEANUP — dọn container đã dừng (chạy thủ công, không bật cảnh báo)
+  # ===========================================================================
+  # docker compose --profile tools run --rm cleanup
+  cleanup:
+    image: docker:27-cli
+    profiles: [tools]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["docker container prune -f --filter until=168h && docker image prune -f --filter until=720h"]

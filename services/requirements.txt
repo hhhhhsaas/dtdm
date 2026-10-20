@@ -1,0 +1,75 @@
+# ============================================================================
+#  THƯ VIỆN DÙNG CHUNG cho cả 8 microservice
+#  Ghim phiên bản chính xác (==) để build lặp lại được (reproducible build).
+#
+#  ⚠️  NGUYÊN TẮC: chỉ khai báo thứ code THỰC SỰ import.
+#      Mỗi gói thừa đều làm image nặng thêm, chậm `pip install` thêm và
+#      mở thêm bề mặt tấn công (dependency confusion / CVE ẩn).
+#      Đã gỡ các gói không dùng: opentelemetry-*, structlog, tenacity,
+#      passlib[bcrypt] — xem `docs/07-van-hanh-hieu-nang-mo-rong.md`.
+# ============================================================================
+
+# --- Web framework ---------------------------------------------------------
+fastapi==0.115.6
+uvicorn[standard]==0.34.0        # "standard" = có uvloop, httpxs, watchfiles
+python-multipart==0.0.30        # upload file (ảnh CCCD, ảnh sự cố)
+                                # 0.0.20→0.0.30: vá CVE-2026-24486/42561/53539 (DoS)
+
+# --- Validation & settings -------------------------------------------------
+pydantic==2.10.4
+pydantic-settings==2.7.0
+email-validator==2.2.0
+
+# --- Database (async) ------------------------------------------------------
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0                 # driver PostgreSQL bất đồng bộ (nhanh nhất cho Python)
+alembic==1.14.0                 # migration — `make migrate`
+greenlet==3.1.1                 # bắt buộc cho SQLAlchemy async
+
+# --- Cache -----------------------------------------------------------------
+redis==5.2.1
+hiredis==2.3.2                   # parser C cho redis, nhanh hơn nhiều.
+                                # ⚠️ Nếu cài trên Windows mà báo "Microsoft Visual C++
+                                # 14.0 is required": đó là vì không có wheel
+                                # sẵn cho nền tảng của bạn. KHÔNG phải lỗi cấu
+                                # hình — `redis` vẫn chạy bình thường, chỉ chậm
+                                # hơn. Bỏ dòng này ra cài, hoặc cài
+                                # "Build Tools for Visual Studio". Trong Docker
+                                # (Debian/Ubuntu) có sẵn manylinux wheel nên
+                                # không gặp vấn đề này.
+
+# --- Message broker --------------------------------------------------------
+aio-pika==9.5.4                  # client RabbitMQ bất đồng bộ
+
+# --- Bảo mật ---------------------------------------------------------------
+pyjwt==2.14.0                    # 2.10.1→2.14.0: vá CVE-2026-102268 (CRITICAL) + 102267/102271/32597/48526
+argon2-cffi==23.1.0              # Argon2id — thuật toán băm mật khẩu khuyến nghị hiện nay
+cryptography==44.0.0              # AES-256-GCM mã hóa CCCD (common/crypto.py)
+
+# --- Object storage --------------------------------------------------------
+minio==7.2.12                    # ảnh CCCD, ảnh sự cố (maintenance-service)
+
+# --- Lịch trình & template -------------------------------------------------
+APScheduler==3.11.0              # job nhắc hóa đơn/hợp đồng (scheduler, notification)
+jinja2==3.1.5                    # render template thông báo (notification-service)
+
+# --- Giám sát --------------------------------------------------------------
+# Chỉ dùng prometheus-client. OpenTelemetry bị gỡ có chủ đích: exporter
+# prometheus của OTel kéo theo cả sdk + instrumentation-fastapi (~40MB) mà
+# code hiện tại không import chỗ nào — chi phí không đem lại giá trị gì.
+prometheus-client==0.21.1
+
+# --- HTTP client giữa các service -----------------------------------------
+httpx==0.28.1
+
+# --- Tiện ích --------------------------------------------------------------
+python-dateutil==2.9.0.post0     # relativedelta: cộng/trừ tháng chính xác
+
+# --- Test (KHÔNG cài vào image runtime) ------------------------------------
+pytest==8.3.4
+pytest-asyncio==0.25.0
+pytest-cov==6.0.0
+respx==0.22.0                     # mock HTTP client để test service-to-service
+
+# --- Lint (chạy trong CI, không đưa vào image runtime) --------------------
+ruff==0.8.6

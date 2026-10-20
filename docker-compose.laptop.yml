@@ -1,0 +1,101 @@
+# ============================================================================
+#  DOCKER COMPOSE — LỚP "LAPTOP DEMO" (overlay, dùng KÈM docker-compose.yml)
+#
+#  Cách dùng:
+#     docker compose -f docker-compose.yml -f docker-compose.laptop.yml up -d --build
+#    hoặc:
+#     make laptop-up
+#
+#  DÀNH CHO máy có RAM hạn chế (8 GB): WSL2 Ubuntu chỉ được cấp ~5 GB.
+#  Toàn bộ stack 21 container lúc nhàn dùng thực ~3.5 GB — vừa khít nhưng
+#  không còn dư địa. Overlay này cắt giảm để chạy ổn định:
+#
+#    1. TẠM BỎ giám sát log (loki/promtail) + giám sát hệ thống
+#       (cAdvisor/node-exporter) bằng cơ chế COMPOSE PROFILES:
+#       → mặc định `up` KHÔNG khởi động chúng (tiết kiệm ~1 GB + CPU).
+#       → muốn bật đầy đủ: docker compose --profile full-monitor up -d
+#    2. Hạ trần RAM (limits) của các service — trần chỉ là giới hạn an toàn,
+#       container ít khi chạm tới, nhưng phòng khi load test / batch tiền.
+#    3. Giữ NGUYÊN: mạng 3 lớp, secrets, read_only, cap_drop, healthcheck,
+#       cổng bind 127.0.0.1, logging có dung lượng giới hạn.
+#
+#  ⚠️  Cơ chế gộp của Compose v2: map (deploy/volumes) gộp ĐỆ QUY, list
+#      (ports/secrets) THAY THẾ → overlay này chỉ khai các mục cần đổi.
+# ============================================================================
+
+name: qlpt
+
+services:
+
+  # =========================================================================
+  #  LỚP DỮ LIỆU — hạ trần RAM cho khớp máy 8 GB
+  # =========================================================================
+  postgres:
+    deploy:
+      resources:
+        limits: { cpus: "1.50", memory: 1.5G }
+    shm_size: 512mb
+
+  redis:
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 384M }
+
+  rabbitmq:
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 384M }
+
+  minio:
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 384M }
+
+  # =========================================================================
+  #  8 MICROSERVICE — trần mặc định 512M → 384M (billing vẫn cao hơn 768M)
+  # =========================================================================
+  auth:         { deploy: { resources: { limits: { cpus: "0.50", memory: 384M } } } }
+  room:         { deploy: { resources: { limits: { cpus: "0.50", memory: 384M } } } }
+  tenant:       { deploy: { resources: { limits: { cpus: "0.50", memory: 384M } } } }
+  contract:     { deploy: { resources: { limits: { cpus: "0.50", memory: 384M } } } }
+  notification: { deploy: { resources: { limits: { cpus: "0.50", memory: 384M } } } }
+  maintenance:  { deploy: { resources: { limits: { cpus: "0.50", memory: 384M } } } }
+  report:       { deploy: { resources: { limits: { cpus: "0.50", memory: 384M } } } }
+
+  billing:
+    deploy:
+      resources:
+        limits: { cpus: "1.00", memory: 768M }
+
+  # =========================================================================
+  #  LỚP GIÁM SÁT — chỉ giữ Prometheus + Grafana (câu chuyện giám sát chính)
+  # =========================================================================
+  prometheus:
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 384M }
+
+  grafana:
+    # 🔒 KHÔNG public ra mạng: chỉ truy cập từ chính máy (muốn vào từ xa thì
+    #    dùng SSH tunnel tới localhost:3000). Base compose vẫn để 3000:3000
+    #    cho bản deploy server thật.
+    #    ⚠️ Compose GỘP list `ports` giữa các file (append), KHÔNG tự thay —
+    #    nên phải dùng tag `!override` để thay hẳn list của base.
+    ports: !override
+      - "127.0.0.1:3000:3000"
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 256M }
+
+  # --- Giám sát "nặng" → chỉ chạy khi bật profile full-monitor --------------
+  loki:
+    profiles: [full-monitor]
+
+  promtail:
+    profiles: [full-monitor]
+
+  cadvisor:
+    profiles: [full-monitor]
+
+  node-exporter:
+    profiles: [full-monitor]

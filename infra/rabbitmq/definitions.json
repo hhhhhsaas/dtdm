@@ -1,0 +1,39 @@
+{
+  "users": [
+    {
+      "name": "qlpt",
+      "password_hash": "vsjv4TeiZkNeCERiqJIEzSj5x5raI02BeRRMmYp+DD1orU0k",
+      "tags": "administrator"
+    }
+  ],
+  "vhosts": [
+    {
+      "name": "/qlpt",
+      "description": "Virtual host chính của hệ thống QLPT"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "qlpt",
+      "vhost": "/qlpt",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "parameters": [],
+  "global_parameters": [],
+  "policies": [
+    {
+      "vhost": "/qlpt",
+      "name": "qlpt-ttl",
+      "pattern": "",
+      "apply-to": "queues",
+      "definition": {
+        "message-ttl": 604800000,
+        "max-length": 100000
+      },
+      "priority": 0
+    }
+  ]
+}

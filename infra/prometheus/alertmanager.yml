@@ -1,0 +1,59 @@
+# ============================================================================
+#  PROMETHEUS ALERTMANAGER — định tuyến cảnh báo
+#  Trong đồ án: gửi cảnh báo ra webhook/file để chứng minh hoạt động.
+#  Khi triển khai thật: nối vào Slack/Telegram/Email/PagerDuty.
+# ============================================================================
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: ''
+
+route:
+  receiver: 'default'
+  group_by: ['alertname', 'service', 'severity']
+  group_wait: 30s              # chờ 30s xem còn cảnh báo khác cùng nhóm không
+  group_interval: 5m
+  repeat_interval: 4h          # không gửi lại cùng cảnh báo trong 4h
+  receiver: 'default'
+
+  routes:
+    # Sự cố nghiêm trọng → nhận ngay lập tức
+    - matchers: [ 'severity=~"disaster|critical"' ]
+      receiver: 'critical-pager'
+      group_wait: 10s
+      repeat_interval: 1h
+
+    # Cảnh báo chỉ để tham khảo, gom hằng ngày
+    - matchers: [ 'severity=info' ]
+      receiver: 'daily-digest'
+      group_wait: 1h
+      repeat_interval: 24h
+
+inhibit_rules:
+  # Khi có ServiceDown thì không cần báo latency của chính service đó
+  - source_matchers: [ 'alertname=ServiceDown' ]
+    target_matchers: [ 'alertname=~"HighLatencyP95|HighErrorRate|HealthCheckFailing"' ]
+    equal: ['instance']
+
+  # Khi RAM đầy thì cảnh báo đĩa đầy là hệ quả, không cần báo cả hai
+  - source_matchers: [ 'alertname=HostMemoryCritical' ]
+    target_matchers: [ 'alertname=~"ContainerRestarting|DiskSpaceCritical"' ]
+
+receivers:
+  - name: 'default'
+    webhook_configs:
+      - url: 'http://notification:8006/api/v1/internal/alerts'
+        send_resolved: true
+
+  - name: 'critical-pager'
+    webhook_configs:
+      - url: 'http://notification:8006/api/v1/internal/alerts'
+        send_resolved: true
+    # Thêm Telegram bot cho sự cố nghiêm trọng
+    # telegram_configs:
+    #   - bot_token: '<TOKEN>'
+    #     chat_id: '<CHAT_ID>'
+
+  - name: 'daily-digest'
+    webhook_configs:
+      - url: 'http://notification:8006/api/v1/internal/digest'
+        send_resolved: true
