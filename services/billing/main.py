@@ -1142,6 +1142,32 @@ async def list_overdue(
     return [_to_list_item(i) for i in rows]
 
 
+@invoice_router.get("/mine", response_model=list[InvoiceResponse],
+                    summary="🧾 Hóa đơn của tôi (người thuê)")
+async def list_my_invoices(
+    user: Annotated[CurrentUser, Depends(require_roles(Role.TENANT))],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    limit: int = Query(12, ge=1, le=36, description="Số kỳ gần nhất"),
+) -> list[InvoiceResponse]:
+    """
+    Người thuê chỉ xem được hóa đơn của chính mình.
+
+    ⭐ Lọc theo `tenant_id == user.id`: tài khoản TENANT dùng CHUNG UUID với
+       hồ sơ người thuê (seed_auth/seed_tenant tạo theo TENANT_IDS). Không nhận
+       tenant_id từ query — nếu nhận, đổi tham số là xem được hóa đơn người khác.
+       Đặt TRƯỚC route `/{invoice_id}` để "mine" không bị hiểu là UUID.
+    """
+    from sqlalchemy.orm import selectinload
+    rows = (await session.execute(
+        select(Invoice)
+        .options(selectinload(Invoice.details))
+        .where(Invoice.tenant_id == user.id)
+        .order_by(Invoice.period.desc())
+        .limit(limit)
+    )).scalars().all()
+    return [_to_invoice_response(i) for i in rows]
+
+
 @invoice_router.get("/{invoice_id}", response_model=InvoiceResponse,
                     summary="Chi tiết hóa đơn (kèm giải thích từng dòng)")
 async def get_invoice(
@@ -1180,6 +1206,10 @@ async def record_payment(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> PaymentResponse:
     """
+    ⭐ Khoá dòng hóa đơn (FOR UPDATE): 2 người cùng ghi nhận một lúc sẽ cùng
+       đọc `remaining_amount` cũ và cùng qua kiểm tra → thu vượt. Có khoá thì
+       request thứ hai phải đợi, đọc lại số đã cập nhật rồi mới kiểm tra.
+
     ⭐ R8 — hóa đơn `PAID` không nhận thêm thanh toán.
 
     Trả nhiều hơn tổng là trả thừa. Cho phép sẽ sinh ra tình huống: sổ sách
@@ -1187,7 +1217,7 @@ async def record_payment(
     không ai biết 650.000 đó là gì. Nếu khách trả thừa, trả lại tiền mặt
     và ghi thành khoản khác.
     """
-    invoice = await _get_invoice_or_404(session, invoice_id)
+    invoice = await _get_invoice_or_404(session, invoice_id, lock=True)
     user.assert_property_access(invoice.property_id)
 
     if invoice.is_paid:
@@ -2143,13 +2173,19 @@ def _resolve_property(user: CurrentUser, requested: uuid.UUID | None) -> uuid.UU
     return user.property_id
 
 
-async def _get_invoice_or_404(session: AsyncSession, invoice_id: uuid.UUID) -> Invoice:
+async def _get_invoice_or_404(
+    session: AsyncSession, invoice_id: uuid.UUID, *, lock: bool = False,
+) -> Invoice:
+    """`lock=True` → SELECT … FOR UPDATE, giữ khoá dòng tới hết transaction."""
     from sqlalchemy.orm import selectinload
-    invoice = (await session.execute(
+    stmt = (
         select(Invoice)
         .options(selectinload(Invoice.details))
         .where(Invoice.id == invoice_id)
-    )).scalar_one_or_none()
+    )
+    if lock:
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
+    invoice = (await session.execute(stmt)).scalar_one_or_none()
     if not invoice:
         raise NotFoundError(f"Không tìm thấy hóa đơn {invoice_id}")
     return invoice

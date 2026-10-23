@@ -4,627 +4,353 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QLPT — Quản lý phòng trọ</title>
-<meta name="description" content="Hệ thống quản lý phòng trọ Microservice — Đồ án Điện toán đám mây">
+<meta name="description" content="Phần mềm quản lý phòng trọ: phòng, hợp đồng, điện nước, hóa đơn, sự cố">
+<meta name="theme-color" content="#0b0f17">
 <link rel="icon" type="image/svg+xml"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231b2438'/%3E%3Cpath d='M32 14 12 32h6v18h11V38h6v12h11V32h6z' fill='%2334d399'/%3E%3C/svg%3E">
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2310b981'/%3E%3Cpath d='M32 14 12 32h6v18h11V38h6v12h11V32h6z' fill='%23052e1f'/%3E%3C/svg%3E">
 <style>
   :root {
-    --bg: #0d1220; --panel: #141b2d; --panel2: #1b2438; --line: #26314d;
-    --txt: #e7ecf5; --muted: #8ea0c0; --acc: #34d399; --acc2: #38bdf8;
-    --red: #f87171; --amber: #fbbf24; --ok: #34d399; --bad: #f87171;
+    --bg: #0b0f17; --panel: #111722; --panel2: #161e2c; --hover: #1a2333;
+    --line: #222c3d; --line2: #2c384d;
+    --txt: #e6eaf2; --txt2: #b8c1d1; --muted: #7d889c;
+    --acc: #10b981; --acc-soft: rgba(16,185,129,.12); --acc-txt: #34d399;
+    --blue: #60a5fa; --blue-soft: rgba(96,165,250,.12);
+    --amber: #f59e0b; --amber-soft: rgba(245,158,11,.12);
+    --red: #f87171; --red-soft: rgba(248,113,113,.12);
+    --radius: 10px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     background: var(--bg); color: var(--txt);
-    font: 14px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif;
-    min-height: 100vh;
+    font: 14px/1.5 Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+    min-height: 100vh; -webkit-font-smoothing: antialiased;
   }
-  a { color: var(--acc2); }
   .hidden { display: none !important; }
+  .ic { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor;
+        stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .ic.sm { width: 15px; height: 15px; } .ic.lg { width: 22px; height: 22px; }
+  code { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
 
-  /* ---------------- Khung đăng nhập ---------------- */
-  #login-wrap {
-    min-height: 100vh; display: flex; align-items: center; justify-content: center;
-    background: radial-gradient(1200px 500px at 50% -10%, #1c2b4a 0%, var(--bg) 55%);
+  /* ---------------- Form & nút ---------------- */
+  label { display: block; margin: 0 0 6px; color: var(--txt2); font-size: 12.5px; font-weight: 500; }
+  .field { margin-bottom: 14px; }
+  .field .help { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  input, select, textarea {
+    width: 100%; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--line2);
+    background: var(--panel2); color: var(--txt); font: inherit; outline: none;
+    transition: border-color .15s, box-shadow .15s;
   }
-  .login-card {
-    width: min(400px, 92vw); background: var(--panel); border: 1px solid var(--line);
-    border-radius: 14px; padding: 34px 30px; box-shadow: 0 20px 60px rgba(0,0,0,.45);
+  textarea { min-height: 84px; resize: vertical; }
+  input:focus, select:focus, textarea:focus { border-color: var(--acc); box-shadow: 0 0 0 3px var(--acc-soft); }
+  input[type="month"], input[type="date"] { color-scheme: dark; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    cursor: pointer; border: 1px solid transparent; border-radius: 8px; padding: 8px 14px;
+    font: 600 13.5px/1.2 inherit; font-family: inherit; color: #052e1f; background: var(--acc);
+    transition: filter .15s, background .15s, border-color .15s; white-space: nowrap;
   }
-  .logo { display:flex; align-items:center; gap:12px; margin-bottom: 6px; }
-  .logo .dot { width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, var(--acc), var(--acc2)); display:grid; place-items:center; font-weight:800; color:#04120c; }
-  h1 { font-size: 22px; letter-spacing: .3px; }
-  .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 22px; }
-  label { display:block; margin: 14px 0 5px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .6px; }
-  input, select {
-    width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line);
-    background: var(--panel2); color: var(--txt); font-size: 14px; outline: none;
-  }
-  input:focus { border-color: var(--acc2); }
-  button {
-    cursor: pointer; border: 0; border-radius: 8px; padding: 10px 14px;
-    font-weight: 600; font-size: 14px; color: #04120c; background: var(--acc);
-    transition: filter .15s, transform .05s;
-  }
-  button:hover { filter: brightness(1.08); }
-  button:active { transform: translateY(1px); }
-  button.ghost { background: transparent; border: 1px solid var(--line); color: var(--txt); }
-  button.ghost:hover { border-color: var(--acc2); color: var(--acc2); }
-  .login-btn { width: 100%; margin-top: 22px; padding: 12px; font-size: 15px; }
-  .quick { margin-top: 20px; display: flex; gap: 8px; flex-wrap: wrap; }
-  .quick button { flex: 1; padding: 8px 6px; font-size: 12px; background: var(--panel2); color: var(--muted); border: 1px solid var(--line); }
-  .quick button:hover { color: var(--acc2); border-color: var(--acc2); }
-  .err { color: var(--bad); font-size: 13px; margin-top: 12px; min-height: 18px; }
-  .hint { color: var(--muted); font-size: 12px; margin-top: 18px; border-top: 1px dashed var(--line); padding-top: 12px; }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; filter: none; }
+  .btn.ghost { background: transparent; color: var(--txt); border-color: var(--line2); }
+  .btn.ghost:hover { background: var(--hover); }
+  .btn.danger { background: transparent; color: var(--red); border-color: rgba(248,113,113,.4); }
+  .btn.danger:hover { background: var(--red-soft); }
+  .btn.sm { padding: 6px 10px; font-size: 12.5px; }
+  .btn.block { width: 100%; }
 
-  /* ---------------- App layout ---------------- */
+  /* ---------------- Đăng nhập ---------------- */
+  #login-wrap { min-height: 100vh; display: grid; grid-template-columns: 1.1fr 1fr; }
+  .login-side {
+    background: linear-gradient(160deg, #0f2a22 0%, #0b1720 60%, var(--bg) 100%);
+    padding: 56px; display: flex; flex-direction: column; justify-content: space-between;
+    border-right: 1px solid var(--line);
+  }
+  .login-side h2 { font-size: 30px; line-height: 1.25; max-width: 440px; margin-top: 40px; }
+  .login-side p { color: var(--txt2); margin-top: 14px; max-width: 420px; }
+  .login-side ul { list-style: none; margin-top: 28px; display: grid; gap: 12px; }
+  .login-side li { display: flex; gap: 10px; align-items: center; color: var(--txt2); }
+  .login-side li .ic { color: var(--acc-txt); }
+  .login-main { display: flex; align-items: center; justify-content: center; padding: 32px; }
+  .login-card { width: min(380px, 100%); }
+  .login-card h1 { font-size: 22px; margin-bottom: 4px; }
+  .login-card .sub { color: var(--muted); margin-bottom: 26px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; }
+  .brand .logo { width: 34px; height: 34px; border-radius: 9px; background: var(--acc);
+                 display: grid; place-items: center; color: #052e1f; }
+  .err { color: var(--red); font-size: 13px; margin-top: 12px; min-height: 18px; }
+  .demo { margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--line); }
+  .demo .t { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .demo .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { cursor: pointer; padding: 5px 11px; border-radius: 99px; background: var(--panel2);
+          border: 1px solid var(--line2); color: var(--txt2); font-size: 12.5px; font-family: inherit; }
+  .chip:hover { border-color: var(--acc); color: var(--acc-txt); }
+
+  /* ---------------- Khung ứng dụng ---------------- */
   #app { display: flex; min-height: 100vh; }
-  nav {
-    width: 230px; background: var(--panel); border-right: 1px solid var(--line);
-    padding: 18px 14px; position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  aside {
+    width: 236px; flex: none; background: var(--panel); border-right: 1px solid var(--line);
+    padding: 18px 12px; position: sticky; top: 0; height: 100vh;
+    display: flex; flex-direction: column;
   }
-  nav .brand { display:flex; align-items:center; gap:10px; padding: 4px 6px 16px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
-  nav .brand .dot { width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(135deg, var(--acc), var(--acc2)); display:grid; place-items:center; font-weight:800; color:#04120c; }
-  nav .brand span { font-weight: 700; font-size: 15px; }
-  nav button.nav {
-    display:flex; align-items:center; gap: 10px; width: 100%; text-align: left;
-    background: transparent; color: var(--muted); padding: 10px 12px; margin-bottom: 4px;
-    font-weight: 500; font-size: 13.5px; border: 1px solid transparent;
+  aside .brand { padding: 2px 8px 18px; }
+  .nav-group { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .6px;
+               text-transform: uppercase; padding: 14px 10px 6px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px;
+    border-radius: 8px; color: var(--txt2); background: none; border: 0; cursor: pointer;
+    font: 500 13.5px inherit; font-family: inherit; text-align: left; margin-bottom: 2px;
   }
-  nav button.nav:hover { color: var(--txt); background: var(--panel2); }
-  nav button.nav.active { color: var(--acc); background: var(--panel2); border-color: var(--line); }
-  nav .who { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
-  nav .who b { display:block; color: var(--txt); font-size: 13px; }
-  nav .who .role-badge { display:inline-block; margin-top: 6px; padding: 2px 8px; border-radius: 99px; font-size: 10.5px; letter-spacing: .5px; background: rgba(52,211,153,.12); color: var(--acc); border: 1px solid rgba(52,211,153,.35); }
-  nav .logout { margin-top: 10px; }
+  .nav-item:hover { background: var(--hover); color: var(--txt); }
+  .nav-item.active { background: var(--acc-soft); color: var(--acc-txt); }
+  .nav-item .badge { margin-left: auto; background: var(--red); color: #fff; font-size: 11px;
+                     border-radius: 99px; padding: 0 7px; line-height: 18px; }
+  .me { margin-top: auto; border-top: 1px solid var(--line); padding: 14px 8px 0;
+        display: flex; align-items: center; gap: 10px; }
+  .avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--panel2);
+            border: 1px solid var(--line2); display: grid; place-items: center;
+            font-weight: 700; font-size: 13px; color: var(--acc-txt); flex: none; }
+  .me .who { min-width: 0; flex: 1; }
+  .me .who b { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .me .who span { color: var(--muted); font-size: 12px; }
+  .icon-btn { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 6px; border-radius: 7px; display: grid; }
+  .icon-btn:hover { background: var(--hover); color: var(--txt); }
 
-  main { flex: 1; padding: 26px 30px 60px; max-width: 1280px; }
-  main h2 { font-size: 20px; margin-bottom: 4px; }
-  main .lead { color: var(--muted); font-size: 13px; margin-bottom: 22px; }
+  main { flex: 1; min-width: 0; padding: 28px 32px 64px; }
+  .page { max-width: 1180px; margin: 0 auto; }
+  .page-head { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 22px; }
+  .page-head h2 { font-size: 22px; letter-spacing: -.2px; }
+  .page-head .lead { color: var(--muted); margin-top: 3px; }
+  .page-head .actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
 
-  /* ---------------- Cards & bảng ---------------- */
+  /* ---------------- Thẻ, bảng ---------------- */
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+  .card-h { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  .card-h h3 { font-size: 14.5px; }
+  .card-h .muted { margin-left: auto; font-size: 12.5px; }
+  .card-b { padding: 16px 18px; }
   .grid { display: grid; gap: 14px; }
-  .grid.kpis { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 22px; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
-  .kpi .k { color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .5px; }
-  .kpi .v { font-size: 22px; font-weight: 700; margin-top: 6px; }
-  .kpi .v small { font-size: 13px; color: var(--muted); font-weight: 400; }
-  .kpi.ok .v { color: var(--ok); } .kpi.warn .v { color: var(--amber); } .kpi.bad .v { color: var(--bad); }
+  .kpis { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 18px; }
+  .kpi { padding: 16px 18px; }
+  .kpi .k { color: var(--muted); font-size: 12.5px; display: flex; align-items: center; gap: 7px; }
+  .kpi .v { font-size: 24px; font-weight: 700; margin-top: 8px; letter-spacing: -.3px; font-variant-numeric: tabular-nums; }
+  .kpi .s { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .two { grid-template-columns: 1.35fr 1fr; }
 
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { text-align: left; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
-  td { padding: 9px 10px; border-bottom: 1px solid #1c2740; }
-  tr:hover td { background: rgba(56,189,248,.04); }
-  .pill { display:inline-block; padding: 2px 9px; border-radius: 99px; font-size: 11px; font-weight: 600; }
-  .pill.PAID, .pill.ACTIVE, .pill.OCCUPIED, .pill.SUCCESS { background: rgba(52,211,153,.12); color: var(--ok); }
-  .pill.PENDING, .pill.DRAFT { background: rgba(251,191,36,.14); color: var(--amber); }
-  .pill.OVERDUE, .pill.EXPIRED { background: rgba(248,113,113,.14); color: var(--bad); }
-  .pill.AVAILABLE { background: rgba(56,189,248,.14); color: var(--acc2); }
-  .money { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th { text-align: left; color: var(--muted); font-size: 12px; font-weight: 500;
+       padding: 10px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; background: var(--panel); }
+  td { padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  tr:last-child td { border-bottom: 0; }
+  tr.click { cursor: pointer; }
+  tr.click:hover td { background: var(--hover); }
   .right { text-align: right; }
+  .money { font-variant-numeric: tabular-nums; white-space: nowrap; }
   .muted { color: var(--muted); }
-  .flex { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  .spacer { flex: 1; }
-  .toolbar { margin-bottom: 14px; } .toolbar input { max-width: 260px; }
-  .empty { padding: 40px; text-align: center; color: var(--muted); }
-  .warn-banner { background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.3); color: #fde68a; padding: 10px 14px; border-radius: 10px; margin-bottom: 16px; font-size: 13px; }
-  .ok-banner { background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.3); color: #a7f3d0; padding: 10px 14px; border-radius: 10px; margin-bottom: 16px; font-size: 13px; }
-  .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
-  .bar-row .lab { width: 90px; color: var(--muted); flex: none; }
-  .bar { flex: 1; height: 14px; background: var(--panel2); border-radius: 99px; overflow: hidden; }
-  .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--acc), var(--acc2)); border-radius: 99px; }
-  .bar-row .val { width: 90px; flex: none; text-align: right; font-variant-numeric: tabular-nums; }
-  footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; text-align: center; }
-  @media (max-width: 820px) { #app { flex-direction: column; } nav { width: 100%; height: auto; position: static; } main { padding: 18px 16px 50px; } }
+  .strong { font-weight: 600; }
+  .nowrap { white-space: nowrap; }
+
+  .pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 99px;
+          font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .pill.g { background: var(--acc-soft); color: var(--acc-txt); }
+  .pill.b { background: var(--blue-soft); color: var(--blue); }
+  .pill.a { background: var(--amber-soft); color: var(--amber); }
+  .pill.r { background: var(--red-soft); color: var(--red); }
+  .pill.n { background: var(--panel2); color: var(--muted); }
+
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .toolbar input, .toolbar select { width: auto; min-width: 160px; }
+  .toolbar .search { position: relative; flex: 1; min-width: 200px; max-width: 320px; }
+  .toolbar .search input { width: 100%; padding-left: 34px; }
+  .toolbar .search .ic { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+  .seg { display: inline-flex; background: var(--panel2); border: 1px solid var(--line2); border-radius: 8px; padding: 2px; }
+  .seg button { background: none; border: 0; color: var(--txt2); padding: 6px 11px; border-radius: 6px;
+                cursor: pointer; font: 500 12.5px inherit; font-family: inherit; }
+  .seg button.on { background: var(--hover); color: var(--txt); }
+
+  .empty { padding: 44px 20px; text-align: center; color: var(--muted); }
+  .empty .ic { width: 34px; height: 34px; margin-bottom: 8px; color: var(--line2); }
+  .empty b { display: block; color: var(--txt2); margin-bottom: 4px; }
+  .skel { height: 14px; border-radius: 6px; background: linear-gradient(90deg, var(--panel2), var(--hover), var(--panel2));
+          background-size: 200% 100%; animation: sh 1.2s infinite; margin: 10px 0; }
+  @keyframes sh { to { background-position: -200% 0; } }
+  .note { display: flex; gap: 10px; align-items: flex-start; padding: 11px 14px; border-radius: 9px;
+          font-size: 13px; margin-bottom: 14px; border: 1px solid; }
+  .note.info { background: var(--blue-soft); border-color: rgba(96,165,250,.3); color: #bfdbfe; }
+  .note.warn { background: var(--amber-soft); border-color: rgba(245,158,11,.3); color: #fde68a; }
+  .note.ok { background: var(--acc-soft); border-color: rgba(16,185,129,.3); color: #a7f3d0; }
+
+  /* Việc cần làm */
+  .todo { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  .todo:last-child { border-bottom: 0; }
+  .todo .dot { width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; flex: none; }
+  .todo .dot.r { background: var(--red-soft); color: var(--red); }
+  .todo .dot.a { background: var(--amber-soft); color: var(--amber); }
+  .todo .dot.b { background: var(--blue-soft); color: var(--blue); }
+  .todo .dot.g { background: var(--acc-soft); color: var(--acc-txt); }
+  .todo .txt { flex: 1; min-width: 0; }
+  .todo .txt b { display: block; font-size: 14px; }
+  .todo .txt span { color: var(--muted); font-size: 12.5px; }
+
+  /* Biểu đồ cột */
+  .chart { display: flex; align-items: flex-end; gap: 6px; height: 170px; padding-top: 10px; }
+  .chart .col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; min-width: 0; }
+  .chart .bar { width: 100%; max-width: 34px; background: var(--acc); border-radius: 5px 5px 2px 2px; min-height: 3px; opacity: .85; }
+  .chart .col:hover .bar { opacity: 1; }
+  .chart .lab { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .legend { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; margin-top: 10px; }
+
+  /* Thanh tiến độ */
+  .progress { height: 8px; background: var(--panel2); border-radius: 99px; overflow: hidden; }
+  .progress i { display: block; height: 100%; background: var(--acc); transition: width .3s; }
+
+  /* Danh sách mô tả */
+  dl.kv { display: grid; grid-template-columns: 150px 1fr; gap: 9px 14px; font-size: 13.5px; }
+  dl.kv dt { color: var(--muted); }
+  .lines td { padding: 8px 0; }
+  .total-row td { font-weight: 700; font-size: 15px; border-top: 1px solid var(--line2); padding-top: 12px; }
+
+  /* Hộp thoại */
+  .modal-bg { position: fixed; inset: 0; background: rgba(3,6,12,.65); backdrop-filter: blur(2px);
+              display: flex; align-items: flex-start; justify-content: center; padding: 6vh 16px; z-index: 50; overflow-y: auto; }
+  .modal { width: min(560px, 100%); background: var(--panel); border: 1px solid var(--line2);
+           border-radius: 14px; box-shadow: 0 24px 70px rgba(0,0,0,.5); }
+  .modal.wide { width: min(760px, 100%); }
+  .modal-h { display: flex; align-items: center; gap: 10px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+  .modal-h h3 { font-size: 16px; }
+  .modal-h .icon-btn { margin-left: auto; }
+  .modal-b { padding: 18px 20px; }
+  .modal-f { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--line); }
+  .section-t { font-size: 13px; font-weight: 600; color: var(--txt2); margin: 18px 0 10px; }
+
+  /* Thông báo nổi */
+  #toasts { position: fixed; right: 18px; bottom: 18px; display: grid; gap: 8px; z-index: 80; }
+  .toast { display: flex; gap: 10px; align-items: center; background: var(--panel2); border: 1px solid var(--line2);
+           border-left: 3px solid var(--acc); padding: 11px 14px; border-radius: 9px; min-width: 260px; max-width: 380px;
+           box-shadow: 0 10px 30px rgba(0,0,0,.4); font-size: 13.5px; animation: tin .2s ease-out; }
+  .toast.err { border-left-color: var(--red); }
+  @keyframes tin { from { transform: translateY(8px); opacity: 0; } }
+
+  /* Ô nhập chỉ số */
+  .meter-in { width: 110px; padding: 6px 8px; text-align: right; font-variant-numeric: tabular-nums; }
+  .meter-in.bad { border-color: var(--red); }
+  .use { font-size: 12px; color: var(--muted); }
+  .use.g { color: var(--acc-txt); }
+
+  /* Thẻ hóa đơn người thuê */
+  .bill { padding: 18px; }
+  .bill .amt { font-size: 28px; font-weight: 700; letter-spacing: -.5px; margin: 6px 0 2px; }
+  .bill-list .item { display: flex; align-items: center; gap: 12px; padding: 13px 18px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .bill-list .item:hover { background: var(--hover); }
+  .bill-list .item:last-child { border-bottom: 0; }
+
+  .mobile-top { display: none; }
+  @media (max-width: 900px) {
+    #login-wrap { grid-template-columns: 1fr; }
+    .login-side { display: none; }
+    .two { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 760px) {
+    aside { position: fixed; left: 0; top: 0; z-index: 40; transform: translateX(-100%); transition: transform .2s; box-shadow: 0 0 40px rgba(0,0,0,.5); }
+    aside.open { transform: none; }
+    .mobile-top { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line);
+                  background: var(--panel); position: sticky; top: 0; z-index: 30; }
+    #app { flex-direction: column; }
+    main { padding: 18px 14px 80px; }
+    .row2 { grid-template-columns: 1fr; }
+    dl.kv { grid-template-columns: 1fr; gap: 2px; } dl.kv dd { margin-bottom: 8px; }
+    .page-head .actions { margin-left: 0; width: 100%; }
+    .toolbar input, .toolbar select { min-width: 0; flex: 1; }
+  }
 </style>
 </head>
 <body>
 
+<!-- Bộ icon (nét vẽ theo phong cách Lucide, nhúng sẵn để không phụ thuộc CDN) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></symbol>
+  <symbol id="i-dash" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></symbol>
+  <symbol id="i-door" viewBox="0 0 24 24"><path d="M13 4h3a2 2 0 0 1 2 2v14"/><path d="M2 20h3"/><path d="M13 20h9"/><path d="M10 12v.01"/><path d="M13 4.56v16.44a1 1 0 0 1-1.24.97L5 20V5.56a2 2 0 0 1 1.52-1.94l4-1A2 2 0 0 1 13 4.56Z"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></symbol>
+  <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></symbol>
+  <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></symbol>
+  <symbol id="i-cash" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></symbol>
+</svg>
+
 <!-- ============================ ĐĂNG NHẬP ============================ -->
-<div id="login-wrap">
-  <div class="login-card">
-    <div class="logo"><div class="dot">QL</div><div><h1>QLPT — Quản lý phòng trọ</h1></div></div>
-    <div class="sub">Hệ thống Microservice · 8 dịch vụ · Đồ án Điện toán đám mây</div>
-
-    <form id="login-form" autocomplete="on">
-      <label for="u">Tên đăng nhập</label>
-      <input id="u" name="username" placeholder="admin" required>
-
-      <label for="p">Mật khẩu</label>
-      <input id="p" name="password" type="password" placeholder="••••••••" required>
-
-      <button class="login-btn" type="submit" id="login-btn">Đăng nhập →</button>
-      <div class="err" id="login-err"></div>
-    </form>
-
-    <div class="quick">
-      <button data-user="admin">admin</button>
-      <button data-user="quanly">quanly</button>
-      <button data-user="khach01">khach01</button>
+<div id="login-wrap" class="hidden">
+  <section class="login-side">
+    <div class="brand"><div class="logo"><svg class="ic"><use href="#i-home"/></svg></div>QLPT</div>
+    <div>
+      <h2>Quản lý dãy trọ gọn trong một màn hình.</h2>
+      <p>Theo dõi phòng, hợp đồng, chỉ số điện nước và công nợ. Người thuê xem hóa đơn và báo sự cố ngay trên điện thoại.</p>
+      <ul>
+        <li><svg class="ic"><use href="#i-gauge"/></svg>Nhập chỉ số cả dãy trong vài phút</li>
+        <li><svg class="ic"><use href="#i-receipt"/></svg>Phát hành hóa đơn hàng loạt, tự tính điện bậc thang</li>
+        <li><svg class="ic"><use href="#i-wrench"/></svg>Tiếp nhận và theo dõi sự cố đến khi xử lý xong</li>
+      </ul>
     </div>
-    <div class="hint">
-      ⚠️ Mật khẩu admin/quản lý đọc từ <code>secrets/admin_password.txt</code>
-      (mặc định <code>Admin@12345</code> nếu chưa tạo file).<br>
-      Tài khoản người thuê mẫu: <code>khach01</code> / <code>Tenant@12345</code>.
+    <div class="muted" style="font-size:12px">© 2026 QLPT</div>
+  </section>
+  <section class="login-main">
+    <div class="login-card">
+      <h1>Đăng nhập</h1>
+      <div class="sub">Chào mừng bạn quay lại</div>
+      <form id="login-form" autocomplete="on">
+        <div class="field"><label for="u">Tên đăng nhập</label>
+          <input id="u" name="username" autocomplete="username" required></div>
+        <div class="field"><label for="p">Mật khẩu</label>
+          <input id="p" name="password" type="password" autocomplete="current-password" required></div>
+        <button class="btn block" type="submit" id="login-btn" style="padding:11px">Đăng nhập</button>
+        <div class="err" id="login-err"></div>
+      </form>
+      <div class="demo hidden">
+        <div class="t">Tài khoản dùng thử</div>
+        <div class="chips">
+          <button class="chip" data-user="admin">Chủ trọ (admin)</button>
+          <button class="chip" data-user="quanly">Quản lý (quanly)</button>
+          <button class="chip" data-user="khach01">Người thuê (khach01)</button>
+        </div>
+      </div>
     </div>
-  </div>
+  </section>
 </div>
 
 <!-- ============================ ỨNG DỤNG ============================ -->
 <div id="app" class="hidden">
-  <nav>
-    <div class="brand"><div class="dot">QL</div><span>QLPT</span></div>
-    <div id="nav-tabs"></div>
-    <div class="who" id="who-box"></div>
-  </nav>
-  <main>
-    <div id="view"></div>
-    <footer>
-      Hệ thống quản lý phòng trọ theo kiến trúc Microservice · Self-hosted Private Cloud
-      (FastAPI · PostgreSQL · RabbitMQ · Redis · MinIO) · Đồ án môn Điện toán đám mây
-    </footer>
-  </main>
+  <div class="mobile-top">
+    <button class="icon-btn" id="menu-btn" aria-label="Mở menu"><svg class="ic"><use href="#i-menu"/></svg></button>
+    <div class="brand"><div class="logo"><svg class="ic sm"><use href="#i-home"/></svg></div>QLPT</div>
+  </div>
+  <aside id="side">
+    <div class="brand"><div class="logo"><svg class="ic"><use href="#i-home"/></svg></div>QLPT</div>
+    <nav id="nav"></nav>
+    <div class="me" id="me"></div>
+  </aside>
+  <main><div class="page" id="view"></div></main>
 </div>
+<div id="toasts"></div>
 
-<script>
-"use strict";
-/* ==========================================================================
-   QLPT — SPA tĩnh (không build, không CDN): toàn bộ UI dùng API tương đối
-   /api/v1/... qua nginx (cùng origin). Bảo mật: token JWT giữ trong
-   localStorage; mọi request gắn header Authorization; khi 401 → tự refresh.
-   ========================================================================== */
-
-const $ = (sel) => document.querySelector(sel);
-
-const state = {
-  access: localStorage.getItem("qlpt.access") || null,
-  refresh: localStorage.getItem("qlpt.refresh") || null,
-  user: JSON.parse(localStorage.getItem("qlpt.user") || "null"),
-  tab: "overview",
-};
-
-/* ------------------------- Tiện ích hiển thị ------------------------- */
-const fmtMoney = (v) => {
-  if (v === null || v === undefined) return "—";
-  const n = Number(v);
-  if (!Number.isFinite(n)) return String(v);
-  return n.toLocaleString("vi-VN") + " đ";
-};
-const fmtDate = (iso) => {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return String(iso).slice(0, 10);
-  return d.toLocaleDateString("vi-VN", { year: "numeric", month: "2-digit", day: "2-digit" });
-};
-const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
-  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-
-/* Trích thông báo lỗi: service trả {error:{code,message}}; FastAPI 422 trả {detail}.
-   Trước đây chỉ đọc res.data.detail nên mọi lỗi 4xx của service hiện "HTTP <mã>". */
-const apiErr = (res) =>
-  (res.data && res.data.error && res.data.error.message) ||
-  (res.data && res.data.detail) ||
-  ("HTTP " + res.status);
-
-/* ------------------------------ API core ------------------------------ */
-/* ⭐ KHÓA REFRESH (single-flight): khi access token hết hạn, nhiều request
-   401 có thể bắn ra ĐỒNG THỜI (VD dashboard mở 3 API song song). Nếu mỗi
-   request tự gọi refresh, refresh token bị ROTATION sẽ làm các refresh sau
-   thất bại 401 → tab lỗi "Token không hợp lệ hoặc đã hết hạn". Do đó chỉ
-   chạy ĐÚNG 1 lần refresh — các request còn lại cùng chờ kết quả đó. */
-let refreshPromise = null;
-
-async function doRefresh() {
-  if (!refreshPromise) {
-    refreshPromise = (async () => {
-      try {
-        const res = await fetch("/api/v1/auth/refresh", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ refresh_token: state.refresh }),
-        });
-        if (!res.ok) return false;
-        const data = await res.json();
-        saveSession(data);
-        return true;
-      } catch (_) {
-        return false;
-      }
-    })();
-  }
-  try {
-    return await refreshPromise;
-  } finally {
-    refreshPromise = null;
-  }
-}
-
-async function api(method, path, body, tryRefresh = true) {
-  const headers = { "Content-Type": "application/json" };
-  if (state.access) headers.Authorization = "Bearer " + state.access;
-  const res = await fetch(path, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : null,
-  });
-
-  if (res.status === 401 && tryRefresh && state.refresh) {
-    const ok = await doRefresh();
-    if (ok) return api(method, path, body, false); // chỉ thử refresh 1 lần
-  }
-  if (res.status === 401 && state.access && !path.startsWith("/api/v1/auth/")) {
-    // Phiên không cứu vãn được (access + refresh đều hết hạn) → về màn hình đăng nhập
-    sessionStorage.setItem("qlpt.msg", "Phiên đã hết hạn — vui lòng đăng nhập lại.");
-    clearSession();
-    location.reload();
-    return { status: 401, ok: false, data: null };
-  }
-  let data = null;
-  try { data = await res.json(); } catch (_) { /* body rỗng */ }
-  return { status: res.status, ok: res.ok, data };
-}
-
-function saveSession(data) {
-  state.access = data.access_token;
-  state.refresh = data.refresh_token;
-  state.user = data.user;
-  localStorage.setItem("qlpt.access", data.access_token);
-  localStorage.setItem("qlpt.refresh", data.refresh_token);
-  localStorage.setItem("qlpt.user", JSON.stringify(data.user));
-}
-
-function clearSession() {
-  state.access = state.refresh = state.user = null;
-  localStorage.removeItem("qlpt.access");
-  localStorage.removeItem("qlpt.refresh");
-  localStorage.removeItem("qlpt.user");
-}
-
-/* ------------------------------ Đăng nhập ----------------------------- */
-$("#login-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const btn = $("#login-btn");
-  btn.disabled = true; btn.textContent = "Đang đăng nhập…";
-  $("#login-err").textContent = "";
-  const res = await fetch("/api/v1/auth/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: $("#u").value.trim(), password: $("#p").value }),
-  });
-  btn.disabled = false; btn.textContent = "Đăng nhập →";
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    $("#login-err").textContent = (data.detail || "Đăng nhập thất bại") + " (HTTP " + res.status + ")";
-    return;
-  }
-  const data = await res.json();
-  saveSession(data);
-  enterApp();
-});
-
-document.querySelectorAll(".quick button").forEach((b) =>
-  b.addEventListener("click", () => {
-    $("#u").value = b.dataset.user;
-    $("#p").value = b.dataset.user === "khach01" ? "Tenant@12345" : "";
-    $("#p").focus();
-  }));
-
-/* ---------------------------- Điều hướng ------------------------------ */
-const ROLE_LABEL = { ADMIN: "Quản trị viên", MANAGER: "Quản lý trọ", TENANT: "Người thuê", SYSTEM: "Hệ thống" };
-
-/* Nhãn tiếng Việt cho trạng thái — GIỮ NGUYÊN giá trị tiếng Anh khi gọi API */
-const ROOM_STATUS_VI = {
-  OCCUPIED: "Đang thuê",
-  AVAILABLE: "Còn trống",
-  MAINTENANCE: "Đang bảo trì",
-  RESERVED: "Đã đặt trước",
-};
-const INVOICE_STATUS_VI = {
-  PAID: "Đã thanh toán",
-  PENDING: "Chờ thanh toán",
-  OVERDUE: "Quá hạn",
-};
-/* Hiển thị nhãn Việt, nếu lạ thì hiện giá trị gốc */
-const st = (map, v) => (map && map[v]) || v || "—";
-const PERMS = {
-  ADMIN: ["overview", "rooms", "available", "invoices", "profile"],
-  MANAGER: ["overview", "rooms", "available", "invoices", "profile"],
-  TENANT: ["available", "profile", "rbac-demo"],
-};
-
-function enterApp() {
-  $("#login-wrap").classList.add("hidden");
-  $("#app").classList.remove("hidden");
-  /* ⭐ Chọn tab mặc định HỢP LỆ với vai trò. Người thuê (TENANT) KHÔNG có
-     tab "overview" (dashboard vận hành chỉ dành cho ADMIN/MANAGER). Nếu vẫn
-     mở "overview", mọi API /reports/dashboard, /rooms/stats, /invoices/stats
-     đều trả 403 → các thẻ KPI hiển thị "undefined"/"—". Lấy tab đầu tiên mà
-     vai trò được phép. */
-  const allowed = PERMS[state.user.role] || PERMS.TENANT;
-  if (!allowed.includes(state.tab)) state.tab = allowed[0];
-  renderNav();
-  go(state.tab);
-}
-
-function renderNav() {
-  const tabs = PERMS[state.user.role] || PERMS.TENANT;
-  const defs = {
-    overview: ["📊", "Tổng quan"],
-    rooms: ["🏠", "Phòng"],
-    available: ["🔍", "Tìm phòng trống"],
-    invoices: ["🧾", "Hóa đơn"],
-    "rbac-demo": ["🛡️", "Thử RBAC"],
-    profile: ["👤", "Hồ sơ"],
-  };
-  $("#nav-tabs").innerHTML = tabs.map((t) =>
-    `<button class="nav ${state.tab === t ? "active" : ""}" data-tab="${t}">
-       <span>${defs[t][0]}</span> ${defs[t][1]}</button>`).join("");
-  $("#nav-tabs").querySelectorAll("button").forEach((b) =>
-    b.addEventListener("click", () => go(b.dataset.tab)));
-
-  $("#who-box").innerHTML =
-    `<b>${esc(state.user.full_name)}</b>
-     <span class="muted">@${esc(state.user.username)}</span><br>
-     <span class="role-badge">${ROLE_LABEL[state.user.role] || state.user.role}</span>
-     <button class="ghost logout" style="width:100%;margin-top:12px">Đăng xuất</button>`;
-  $("#who-box .logout").addEventListener("click", async () => {
-    await api("POST", "/api/v1/auth/logout", { refresh_token: state.refresh }).catch(() => {});
-    clearSession();
-    location.reload();
-  });
-}
-
-function go(tab) {
-  /* Phòng thủ: không render tab ngoài quyền của vai trò (tránh 403 → "undefined") */
-  const allowed = PERMS[state.user.role] || PERMS.TENANT;
-  if (!allowed.includes(tab)) tab = allowed[0];
-  state.tab = tab;
-  document.querySelectorAll("#nav-tabs button").forEach((b) =>
-    b.classList.toggle("active", b.dataset.tab === tab));
-  const renderers = { overview: rOverview, rooms: rRooms, available: rAvailable,
-                      invoices: rInvoices, "rbac-demo": rRbacDemo, profile: rProfile };
-  const v = $("#view");
-  v.innerHTML = `<h2>…</h2><div class="lead muted">Đang tải dữ liệu…</div>`;
-  (renderers[tab] || rProfile)(v).catch((err) => {
-    v.innerHTML = `<div class="warn-banner">⚠️ Không tải được dữ liệu: ${esc(err.message)}</div>`;
-  });
-}
-
-/* ------------------------- Trình render từng tab ---------------------- */
-async function rOverview(v) {
-  v.innerHTML = `
-    <h2>Tổng quan vận hành</h2>
-    <div class="lead">Số liệu tổng hợp từ 8 microservice — do report-service đối chiếu định kỳ</div>
-    <div id="ov-kpis" class="grid kpis"></div>
-    <div id="ov-detail" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))"></div>`;
-
-  const [dash, room, inv] = await Promise.all([
-    api("GET", "/api/v1/reports/dashboard"),
-    api("GET", "/api/v1/rooms/stats"),
-    api("GET", "/api/v1/invoices/stats"),
-  ]);
-
-  const kpi = dash.data && dash.data.kpi ? dash.data.kpi : {};
-  const stale = dash.data && dash.data.freshness && dash.data.freshness.is_stale;
-  const cards = [
-    ["Doanh thu tháng này", fmtMoney(kpi.revenue_month), kpi.revenue_month > 0 ? "ok" : "muted"],
-    ["Tỷ lệ thu hồi", (kpi.collection_ratio ?? "—") + (kpi.collection_ratio != null ? "%" : ""), "ok"],
-    ["Tỷ lệ lấp đầy", (kpi.occupancy_rate ?? "—") + (kpi.occupancy_rate != null ? "%" : ""), kpi.occupancy_rate >= 70 ? "ok" : "warn"],
-    ["Phòng trống", kpi.rooms_available ?? "—", kpi.rooms_available > 0 ? "warn" : "ok"],
-    ["Công nợ đang mở", fmtMoney(kpi.open_debt), "warn"],
-    ["Công nợ quá hạn", fmtMoney(kpi.overdue_debt), kpi.overdue_debt > 0 ? "bad" : "ok"],
-    ["Hợp đồng đang hiệu lực", kpi.active_contracts ?? "—", "ok"],
-    ["Sự cố đang mở", kpi.open_incidents ?? "—", kpi.open_incidents > 0 ? "bad" : "ok"],
-  ];
-  $("#ov-kpis").innerHTML = cards.map(([k, val, cls]) =>
-    `<div class="card kpi ${cls}"><div class="k">${k}</div><div class="v">${val}</div></div>`).join("");
-
-  /* Chi tiết: bar chart doanh thu 30 ngày + cơ cấu công nợ */
-  let html = `<div class="card"><h3 style="font-size:15px;margin-bottom:12px">Doanh thu 30 ngày gần nhất</h3>`;
-  const points = (dash.data && dash.data.revenue_30d) || [];
-  if (points.length === 0) {
-    html += stale
-      ? `<div class="muted">Chưa có dữ liệu — report đang chờ đồng bộ (hoặc chạy <code>make reconcile</code>).</div>`
-      : `<div class="muted">Chưa có dữ liệu doanh thu.</div>`;
-  } else {
-    const max = Math.max(...points.map((p) => Number(p.collected) || 0), 1);
-    html += points.slice(-15).map((p) => {
-      const w = Math.max(2, Math.round((Number(p.collected) / max) * 100));
-      return `<div class="bar-row"><div class="lab">${fmtDate(p.stat_date)}</div>
-              <div class="bar"><i style="width:${w}%"></i></div>
-              <div class="val">${fmtMoney(p.collected)}</div></div>`;
-    }).join("");
-  }
-  html += `</div>`;
-
-  html += `<div class="card"><h3 style="font-size:15px;margin-bottom:12px">Trạng thái phòng & hóa đơn</h3>
-    <table><tr><th>Chỉ tiêu</th><th class="right">Giá trị</th></tr>
-    <tr><td>Phòng — tổng / đang cho thuê / trống</td>
-        <td class="right">${room.data ? `${room.data.total} / ${room.data.occupied} / ${room.data.available}` : "—"}</td></tr>
-    <tr><td>Hóa đơn — tổng / đã trả / quá hạn</td>
-        <td class="right">${inv.data ? `${inv.data.total_invoices} / ${inv.data.paid} / ${inv.data.overdue}` : "—"}</td></tr>
-    <tr><td>Tổng tiền đã thu</td><td class="right money">${fmtMoney(inv.data && inv.data.total_collected)}</td></tr>
-    <tr><td>Còn phải thu</td><td class="right money">${fmtMoney(inv.data && inv.data.total_outstanding)}</td></tr>
-    </table></div>`;
-  $("#ov-detail").innerHTML = html;
-
-  if (stale) v.insertAdjacentHTML("afterbegin",
-    `<div class="warn-banner">⏳ Dữ liệu báo cáo chưa được đồng bộ gần nhất 6 giờ.
-      Mới cài / mới seed thì chạy: <code style="background:#0d1220;padding:2px 6px;border-radius:6px">make reconcile</code></div>`);
-}
-
-async function rRooms(v) {
-  v.innerHTML = `
-    <div class="flex"><h2>Danh sách phòng</h2>
-      <input id="room-q" placeholder="Tìm số phòng… (VD: A1)" class="spacer">
-      <select id="room-s"><option value="">Tất cả trạng thái</option>
-        <option value="OCCUPIED">Đang thuê</option><option value="AVAILABLE">Còn trống</option><option value="MAINTENANCE">Đang bảo trì</option><option value="RESERVED">Đã đặt trước</option></select>
-    </div>
-    <div class="lead">room-service · chỉ ADMIN/MANAGER — người thuê bị chặn (403)</div>
-    <div id="room-tbl"></div>`;
-
-  const load = async () => {
-    const q = $("#room-q").value.trim();
-    const s = $("#room-s").value;
-    const params = new URLSearchParams({ page_size: "100" });
-    if (q) params.set("search", q);
-    if (s) params.set("status", s);
-    const res = await api("GET", "/api/v1/rooms?" + params.toString());
-    if (!res.ok) throw new Error(apiErr(res));
-    const items = res.data.items || [];
-    $("#room-tbl").innerHTML = items.length
-      ? `<table><tr><th>Phòng</th><th>Tòa / tầng</th><th>Diện tích</th>
-           <th class="right">Giá thuê</th><th>Trạng thái</th><th>Hợp đồng hiện tại</th></tr>` +
-        items.map((r) => `<tr>
-          <td><b>${esc(r.room_number)}</b></td>
-          <td class="muted">${esc(r.building_name || "—")} · Tầng ${r.floor ?? "—"}</td>
-          <td>${r.area_m2 ?? "—"} m²</td>
-          <td class="right money">${fmtMoney(r.base_price)}</td>
-          <td><span class="pill ${esc(r.status)}">${st(ROOM_STATUS_VI, r.status)}</span></td>
-          <td class="muted">${r.current_contract_id ? "đang thuê" : "—"}</td></tr>`).join("") +
-        `</table>`
-      : `<div class="empty">Không tìm thấy phòng nào</div>`;
-  };
-  await load();
-  $("#room-q").addEventListener("input", debounce(load, 250));
-  $("#room-s").addEventListener("change", load);
-}
-
-async function rAvailable(v) {
-  v.innerHTML = `
-    <h2>Tìm phòng trống (công khai)</h2>
-    <div class="lead">Không cần đăng nhập — endpoint được nginx cache 30 giây; giá là ước tính
-      (kèm điện/nước) do billing-service đẩy vào Redis qua event</div>
-    <div id="avail-grid" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))"></div>`;
-  const res = await api("GET", "/api/v1/rooms/available");
-  if (!res.ok) throw new Error(apiErr(res));
-  const items = res.data.items || [];
-  $("#avail-grid").innerHTML = items.length ? items.map((r) => `
-    <div class="card">
-      <div class="flex"><b style="font-size:16px">Phòng ${esc(r.room_number)}</b>
-        <span class="pill AVAILABLE">${st(ROOM_STATUS_VI, r.status)}</span></div>
-      <div class="muted" style="margin:6px 0">${esc(r.building_name || "")} · Tầng ${r.floor ?? "—"} · ${r.area_m2 ?? "—"} m²</div>
-      <div style="margin-top:10px">Giá thuê: <b class="money">${fmtMoney(r.base_price)}</b></div>
-      <div class="muted" style="margin-top:4px">Ước tính tổng (điện + nước + dịch vụ):</div>
-      <div class="money" style="font-size:17px;color:var(--acc);font-weight:700">${fmtMoney(r.estimated_total)}</div>
-      <div class="muted" style="font-size:11px;margin-top:4px">${r.price_is_estimate ? "giá ước tính, tính theo hóa đơn thật" : ""}</div>
-    </div>`).join("")
-   : `<div class="empty card">Hiện không có phòng trống nào.</div>`;
-}
-
-async function rInvoices(v) {
-  v.innerHTML = `
-    <div class="flex"><h2>Hóa đơn</h2>
-      <select id="inv-s" class="spacer">
-        <option value="">Tất cả trạng thái</option><option value="PAID">Đã thanh toán</option>
-        <option value="PENDING">Chờ thanh toán</option><option value="OVERDUE">Quá hạn</option></select>
-      <span class="muted" id="inv-sum"></span></div>
-    <div class="lead">billing-service · danh sách theo kỳ, phạt trễ hạn 5%/ngày (trần 30 ngày), tiền luôn Decimal/VND</div>
-    <div id="inv-tbl"></div>`;
-
-  const load = async () => {
-    const s = $("#inv-s").value;
-    const params = new URLSearchParams({ page_size: "100" });
-    if (s) params.set("status", s);
-    const res = await api("GET", "/api/v1/invoices?" + params.toString());
-    if (res.status === 403) {
-      $("#inv-tbl").innerHTML = `<div class="warn-banner">🚫 Từ chối quyền truy cập (403) —
-        tài khoản hiện tại không phải ADMIN/MANAGER. Đây chính là RBAC đang hoạt động.</div>`;
-      return;
-    }
-    if (!res.ok) throw new Error(apiErr(res));
-    const items = res.data.items || [];
-    const total = items.reduce((s, i) => s + (Number(i.total_amount) || 0), 0);
-    $("#inv-sum").textContent = `— ${items.length} hóa đơn, tổng ${fmtMoney(total)}`;
-    $("#inv-tbl").innerHTML = items.length
-      ? `<table><tr><th>Số hóa đơn</th><th>Kỳ</th><th>Phòng</th><th>Người thuê</th>
-           <th class="right">Tổng tiền</th><th class="right">Đã trả</th>
-           <th>Hạn thanh toán</th><th>Trạng thái</th></tr>` +
-        items.map((i) => `<tr>
-          <td class="muted">${esc(i.invoice_no)}</td>
-          <td>${fmtDate(i.period)}</td>
-          <td>${esc(i.room_number)}</td>
-          <td>${esc(i.tenant_name)}</td>
-          <td class="right money">${fmtMoney(i.total_amount)}</td>
-          <td class="right money">${fmtMoney(i.paid_amount)}</td>
-          <td>${fmtDate(i.due_date)}${i.days_overdue ? ` <span class="pill OVERDUE">trễ ${i.days_overdue} ngày</span>` : ""}</td>
-          <td><span class="pill ${esc(i.status)}">${st(INVOICE_STATUS_VI, i.status)}</span></td></tr>`).join("") +
-        `</table>`
-      : `<div class="empty">Không có hóa đơn nào khớp bộ lọc.</div>`;
-  };
-  $("#inv-s").addEventListener("change", load);
-  await load();
-}
-
-async function rRbacDemo(v) {
-  v.innerHTML = `
-    <h2>Demo phân quyền (RBAC)</h2>
-    <div class="lead">Với JWT của bạn (vai trò <b>${ROLE_LABEL[state.user.role]}</b>), thử gọi các endpoint
-      của service khác — hệ thống phải chặn đúng</div>
-    <div class="card" id="rbac-box"></div>`;
-
-  /* ⚠️ rows[0] phải là ĐƯỜNG DẪN thuần (vd "/api/v1/rooms"), KHÔNG kèm method.
-     Trước đây để "GET /api/v1/rooms" rồi gọi api("GET", path) → URL thành
-     "GET /api/v1/rooms" (sai) → nginx trả index.html với HTTP 200 → demo luôn
-     hiện "200 OK" cho MỌI vai trò, phá hỏng mục đích minh hoạ RBAC. */
-  const rows = [
-    ["GET", "/api/v1/rooms", "Danh sách phòng — chỉ ADMIN/MANAGER"],
-    ["GET", "/api/v1/invoices/stats", "Thống kê hóa đơn — chỉ ADMIN/MANAGER"],
-    ["GET", "/api/v1/rooms/available", "Phòng trống — công khai, ai cũng được"],
-    ["GET", "/api/v1/auth/me", "Hồ sơ của chính mình — luôn được"],
-  ];
-  const body = [];
-  for (const [method, path, desc] of rows) {
-    const res = await api(method, path);
-    const ok = res.ok;
-    body.push(`<div class="flex" style="padding:8px 0;border-bottom:1px solid #1c2740">
-      <code style="min-width:230px">${method} ${path}</code>
-      <span class="muted" style="flex:1">${desc}</span>
-      <span class="pill ${ok ? "SUCCESS" : "OVERDUE"}">${ok ? "200 OK" : res.status}</span>
-    </div>`);
-  }
-  $("#rbac-box").innerHTML = body.join("");
-}
-
-async function rProfile(v) {
-  const res = await api("GET", "/api/v1/auth/me");
-  if (!res.ok) throw new Error(apiErr(res));
-  const u = res.data;
-  v.innerHTML = `
-    <h2>Hồ sơ người dùng</h2>
-    <div class="lead">auth-service — thông tin từ JWT (không cần tra database)</div>
-    <div class="card" style="max-width:560px">
-      <table>
-        <tr><th>Họ tên</th><td>${esc(u.full_name)}</td></tr>
-        <tr><th>Tên đăng nhập</th><td>@${esc(u.username)}</td></tr>
-        <tr><th>Email</th><td>${esc(u.email)}</td></tr>
-        <tr><th>Điện thoại</th><td>${esc(u.phone || "—")}</td></tr>
-        <tr><th>Vai trò</th><td><span class="role-badge">${ROLE_LABEL[u.role] || u.role}</span></td></tr>
-        <tr><th>Lần đăng nhập cuối</th><td>${fmtDate(u.last_login_at)}</td></tr>
-        <tr><th>Quyền được cấp</th><td class="muted">${(u.permissions || []).join(", ") || "—"}</td></tr>
-      </table>
-    </div>`;
-}
-
-/* ------------------------------ Tiện ích ------------------------------ */
-function debounce(fn, ms) {
-  let t;
-  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
-}
-
-/* ------------------------------ Khởi động ----------------------------- */
-if (state.access && state.user) {
-  enterApp();
-} else {
-  clearSession();
-  /* Hiện thông báo do api() đặt khi phiên hết hạn không cứu vãn được */
-  const msg = sessionStorage.getItem("qlpt.msg");
-  if (msg) {
-    sessionStorage.removeItem("qlpt.msg");
-    const el = $("#login-err");
-    if (el) el.textContent = msg;
-  }
-}
-</script>
+<script src="/app.js?v=20261023" defer></script>
 </body>
 </html>

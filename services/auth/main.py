@@ -142,6 +142,37 @@ def _client_ip(request: Request) -> str:
     return request.headers.get("X-Real-IP", request.client.host if request.client else "unknown")
 
 
+#: Refresh token của trình duyệt nằm trong cookie HttpOnly — JavaScript không
+#: đọc được, nên lỗ XSS không lấy được phiên dài hạn. Chỉ gửi kèm các request
+#: tới /api/v1/auth (Path), không gửi cross-site (SameSite=Strict).
+REFRESH_COOKIE = "qlpt_rt"
+REFRESH_COOKIE_PATH = "/api/v1/auth"
+
+
+def _wants_cookie(request: Request) -> bool:
+    """
+    Web đánh dấu bằng header riêng. Script/CLI (smoke test, Makefile) không gửi
+    header này nên vẫn nhận refresh token trong body như cũ.
+
+    ⭐ Header tùy biến cũng là chốt chống CSRF: form từ site khác không đặt
+       được header, nên không thể dùng cookie để gọi /auth/refresh hộ.
+    """
+    return request.headers.get("X-Token-Transport") == "cookie"
+
+
+def _set_refresh_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        REFRESH_COOKIE, token, max_age=app_settings_refresh_days() * 86400,
+        path=REFRESH_COOKIE_PATH, secure=True, httponly=True, samesite="strict",
+    )
+
+
+def _refresh_from(request: Request, payload: RefreshRequest | None) -> str | None:
+    if payload and payload.refresh_token:
+        return payload.refresh_token
+    return request.cookies.get(REFRESH_COOKIE) if _wants_cookie(request) else None
+
+
 async def _record_attempt(
     session: AsyncSession, request: Request, username: str,
     user_id: uuid.UUID | None, success: bool, reason: str | None = None,
@@ -238,6 +269,7 @@ async def login(
         if user.locked_until > datetime.now(UTC):
             remaining = int((user.locked_until - datetime.now(UTC)).total_seconds() // 60) + 1
             await _record_attempt(session, request, identifier, user.id, False, "ACCOUNT_LOCKED")
+            await session.commit()
             raise RateLimitExceeded(
                 f"Tài khoản đang bị khóa. Thử lại sau {remaining} phút."
             )
@@ -261,12 +293,17 @@ async def login(
                     "🔒 KHÓA tài khoản %s sau %s lần đăng nhập sai",
                     user.username, user.failed_login_count,
                 )
+        # ⭐ COMMIT TRƯỚC KHI RAISE: get_db rollback mọi thứ khi có exception.
+        #    Không commit thì failed_login_count/is_locked/LoginAttempt bị huỷ
+        #    → khoá tài khoản không bao giờ có hiệu lực, dò mật khẩu vô hạn.
+        await session.commit()
         # Thông báo chung chung — không tiết lộ tài khoản có tồn tại không
         raise UnauthorizedError("Sai tên đăng nhập hoặc mật khẩu")
 
     # --- Tài khoản bị vô hiệu hóa ---
     if not user.is_active:
         await _record_attempt(session, request, identifier, user.id, False, "INACTIVE")
+        await session.commit()
         raise PermissionDeniedError(
             "Tài khoản đã bị vô hiệu hóa. Liên hệ quản trị viên."
         )
@@ -304,9 +341,11 @@ async def login(
         logger.warning("Không phát được event user.logged_in: %s", exc)
 
     logger.info("✅ %s đăng nhập thành công (IP %s)", user.username, _client_ip(request))
+    if _wants_cookie(request):
+        _set_refresh_cookie(response, refresh_raw)
     return TokenResponse(
         access_token=access_token,
-        refresh_token=refresh_raw,
+        refresh_token="" if _wants_cookie(request) else refresh_raw,
         expires_in=app_settings_access_seconds(),
         user=UserResponse.model_validate(user),
     )
@@ -325,9 +364,10 @@ def app_settings_access_seconds() -> int:
 @router.post("/auth/refresh", response_model=TokenResponse,
              summary="Làm mới access token")
 async def refresh(
-    payload: RefreshRequest,
     request: Request,
+    response: Response,
     session: Annotated[AsyncSession, Depends(get_db)],
+    payload: RefreshRequest | None = None,
 ) -> TokenResponse:
     """
     Đổi refresh token lấy access token mới.
@@ -335,10 +375,11 @@ async def refresh(
     Bảo mật: **token cũ bị thu hồi ngay** sau khi dùng. Nếu không thu hồi,
     refresh token bị đánh cắp vẫn dùng được vô hạn lần.
     """
-    if "." not in payload.refresh_token:
+    raw = _refresh_from(request, payload)
+    if not raw or "." not in raw:
         raise UnauthorizedError("Định dạng refresh token không hợp lệ")
 
-    user_id_str, _ = payload.refresh_token.split(".", 1)
+    user_id_str, _ = raw.split(".", 1)
     try:
         user_id = uuid.UUID(user_id_str)
     except ValueError as exc:
@@ -350,7 +391,7 @@ async def refresh(
     stored = (await session.execute(
         select(RefreshToken).where(
             RefreshToken.user_id == user_id,
-            RefreshToken.token_hash == hash_token(payload.refresh_token),
+            RefreshToken.token_hash == hash_token(raw),
         )
     )).scalar_one_or_none()
 
@@ -373,8 +414,11 @@ async def refresh(
         ip_address=_client_ip(request),
     ))
 
+    if _wants_cookie(request):
+        _set_refresh_cookie(response, new_refresh)
     return TokenResponse(
-        access_token=access_token, refresh_token=new_refresh,
+        access_token=access_token,
+        refresh_token="" if _wants_cookie(request) else new_refresh,
         expires_in=app_settings_access_seconds(),
         user=UserResponse.model_validate(user),
     )
@@ -383,20 +427,22 @@ async def refresh(
 @router.post("/auth/logout", response_model=MessageResponse,
              summary="Đăng xuất")
 async def logout(
-    payload: RefreshRequest,
     request: Request,
+    response: Response,
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_db)],
+    payload: RefreshRequest | None = None,
 ) -> MessageResponse:
     """Thu hồi refresh token. Access token sẽ tự hết hạn sau ≤15 phút."""
+    raw = _refresh_from(request, payload)
     stored = (await session.execute(
-        select(RefreshToken).where(
-            RefreshToken.token_hash == hash_token(payload.refresh_token)
-        )
-    )).scalar_one_or_none()
+        select(RefreshToken).where(RefreshToken.token_hash == hash_token(raw))
+    )).scalar_one_or_none() if raw else None
 
     if stored and stored.user_id == user.id:
         stored.revoked_at = datetime.now(UTC)
+    response.delete_cookie(REFRESH_COOKIE, path=REFRESH_COOKIE_PATH,
+                           secure=True, httponly=True, samesite="strict")
 
     # Đưa JTI của access token vào denylist Redis → vô hiệu hóa NGAY LẬP TỨC
     redis = getattr(request.app.state, "redis", None)

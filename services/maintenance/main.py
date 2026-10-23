@@ -65,6 +65,7 @@ from common import (
     NotFoundError,
     PageParams,
     Role,
+    ServiceUnavailableError,
     apply_sort,
     create_service_app,
     get_db,
@@ -890,6 +891,23 @@ async def create_incident(
         raise BusinessRuleError(
             "Không xác định được cơ sở. Vui lòng chọn cơ sở khi tạo phiếu."
         )
+
+    # ⭐ `room_id` do client gửi lên → PHẢI thuộc đúng cơ sở của người báo.
+    #    Không kiểm tra thì người thuê cơ sở A báo URGENT cho phòng cơ sở B
+    #    và room-service sẽ dừng khai thác phòng đó. Đổi ~40ms lấy hàng rào
+    #    ranh giới cơ sở là đáng.
+    if payload.room_id and not user.is_admin:
+        try:
+            info = await _room_info(payload.room_id)
+        except ServiceUnavailableError:
+            # Không xác minh được → bỏ gắn phòng: phiếu vẫn tạo được nhưng
+            # không thể kích hoạt việc dừng khai thác phòng.
+            logger.warning("⚠️ room-service không phản hồi — bỏ room_id %s của phiếu mới",
+                           payload.room_id)
+            payload.room_id = None
+        else:
+            if str(info.get("property_id")) != str(property_id):
+                raise NotFoundError("Không tìm thấy phòng này trong cơ sở của bạn")
 
     # Người thuê: không tin `reported_by_tenant_id` từ client (có thể báo hư
     # hộ nhà mình để gây phiền cơ sở khác). Luôn gán theo tài khoản đang đăng.

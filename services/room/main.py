@@ -1157,6 +1157,12 @@ async def _on_incident_urgent(session: AsyncSession, event: DomainEvent) -> None
     room = await session.get(Room, room_id)
     if not room or room.deleted_at:
         return
+    # Hàng rào thứ hai (phòng thủ nhiều lớp): sự kiện của cơ sở này không được
+    # đổi trạng thái phòng của cơ sở khác, kể cả khi bên phát quên kiểm tra.
+    if str(room.property_id) != str(event.data.get("property_id")):
+        logger.warning("🚫 Bỏ qua incident.urgent %s: phòng %s thuộc cơ sở khác",
+                       event.data.get("ticket_no"), room.room_number)
+        return
     if room.status == RoomStatus.MAINTENANCE.value:
         return
 

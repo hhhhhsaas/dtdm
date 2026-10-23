@@ -41,7 +41,8 @@ class TokenResponse(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str = Field(min_length=20)
+    # None khi web gửi qua cookie HttpOnly (header X-Token-Transport: cookie)
+    refresh_token: str | None = Field(default=None, min_length=20)
 
 
 class UserCreate(BaseModel):
