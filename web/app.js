@@ -230,7 +230,7 @@ $$(".demo .chip").forEach((b) => b.addEventListener("click", () => {
 const NAV = {
   manager: [
     ["Vận hành", [["home", "dash", "Việc cần làm"], ["meters", "gauge", "Chỉ số điện nước"], ["invoices", "receipt", "Hóa đơn"], ["incidents", "wrench", "Sự cố"]]],
-    ["Quản lý", [["plan", "grid", "Sơ đồ phòng"], ["rooms", "door", "Danh sách phòng"],["contracts", "file", "Hợp đồng"], ["tenants", "users", "Người thuê"]]],
+    ["Quản lý", [["plan", "grid", "Sơ đồ phòng"], ["contracts", "file", "Hợp đồng"], ["tenants", "users", "Người thuê"]]],
     ["Tài khoản", [["profile", "user", "Hồ sơ"]]],
   ],
   tenant: [
@@ -395,48 +395,7 @@ VIEWS.home = async (v) => {
 };
 
 /* ======================================================================
-   2. PHÒNG
-   ====================================================================== */
-VIEWS.rooms = async (v) => {
-  const statsRes = await api("GET", "/api/v1/rooms/stats");
-  const st = statsRes.data || {};
-  v.innerHTML = head("Phòng", `${st.total ?? 0} phòng · ${st.occupied ?? 0} đang thuê · ${st.available ?? 0} còn trống`) + `
-    <div class="card">
-      <div class="toolbar">
-        <div class="search">${ico("search", "sm")}<input id="q" placeholder="Tìm số phòng"></div>
-        <div class="seg" id="seg">
-          <button data-s="" class="on">Tất cả</button><button data-s="OCCUPIED">Đang thuê</button>
-          <button data-s="AVAILABLE">Còn trống</button><button data-s="MAINTENANCE">Bảo trì</button></div>
-      </div>
-      <div class="tbl-wrap" id="tbl">${skeleton()}</div>
-    </div>`;
-  let status = "";
-  const load = async () => {
-    const res = await api("GET", "/api/v1/rooms?" + qs({ page_size: 100, search: $("#q").value.trim(), status }));
-    if (!res.ok) throw new Error(apiErr(res));
-    const list = items(res);
-    $("#tbl").innerHTML = list.length ? `<table>
-      <tr><th>Phòng</th><th>Tòa · tầng</th><th>Diện tích</th><th class="right">Giá thuê</th><th>Trạng thái</th></tr>
-      ${list.map((r) => `<tr class="click" data-id="${r.id}">
-        <td class="strong">${esc(r.room_number)}</td>
-        <td class="muted">${esc(r.building_name || "—")} · Tầng ${r.floor ?? "—"}</td>
-        <td>${r.area_m2 ? num(r.area_m2) + " m²" : "—"}</td>
-        <td class="right money">${fmtMoney(r.base_price)}</td>
-        <td>${pill(LABEL.room, r.status)}</td></tr>`).join("")}</table>`
-      : empty("door", "Không tìm thấy phòng nào", "Thử bỏ bộ lọc hoặc đổi từ khóa.");
-    $$("tr[data-id]", $("#tbl")).forEach((tr) => tr.addEventListener("click", () =>
-      roomDetail(list.find((x) => x.id === tr.dataset.id))));
-  };
-  $("#q").addEventListener("input", debounce(load, 250));
-  $$("#seg button").forEach((b) => b.addEventListener("click", () => {
-    $$("#seg button").forEach((x) => x.classList.toggle("on", x === b));
-    status = b.dataset.s; load();
-  }));
-  await load();
-};
-
-/* ======================================================================
-   2b. SƠ ĐỒ PHÒNG — chia theo tòa, mỗi tòa xếp tầng cao ở trên như mặt đứng
+   2. SƠ ĐỒ PHÒNG — chia theo tòa, mỗi tòa xếp tầng cao ở trên như mặt đứng
    ====================================================================== */
 VIEWS.plan = async (v) => {
   const [roomsRes, contracts, overdue] = await Promise.all([
