@@ -230,7 +230,7 @@ $$(".demo .chip").forEach((b) => b.addEventListener("click", () => {
 const NAV = {
   manager: [
     ["Vận hành", [["home", "dash", "Việc cần làm"], ["meters", "gauge", "Chỉ số điện nước"], ["invoices", "receipt", "Hóa đơn"], ["incidents", "wrench", "Sự cố"]]],
-    ["Quản lý", [["rooms", "door", "Phòng"], ["contracts", "file", "Hợp đồng"], ["tenants", "users", "Người thuê"]]],
+    ["Quản lý", [["plan", "grid", "Sơ đồ phòng"], ["rooms", "door", "Danh sách phòng"],["contracts", "file", "Hợp đồng"], ["tenants", "users", "Người thuê"]]],
     ["Tài khoản", [["profile", "user", "Hồ sơ"]]],
   ],
   tenant: [
@@ -433,6 +433,84 @@ VIEWS.rooms = async (v) => {
     status = b.dataset.s; load();
   }));
   await load();
+};
+
+/* ======================================================================
+   2b. SƠ ĐỒ PHÒNG — chia theo tòa, mỗi tòa xếp tầng cao ở trên như mặt đứng
+   ====================================================================== */
+VIEWS.plan = async (v) => {
+  const [roomsRes, contracts, overdue] = await Promise.all([
+    api("GET", "/api/v1/rooms?page_size=100"),
+    api("GET", "/api/v1/contracts?status=ACTIVE&page_size=100"),
+    api("GET", "/api/v1/invoices/overdue"),
+  ]);
+  if (!roomsRes.ok) throw new Error(apiErr(roomsRes));
+  const rooms = items(roomsRes);
+  const tenantOf = Object.fromEntries(items(contracts).map((c) => [c.room_id, c.primary_tenant_name]));
+  const debtOf = {};
+  items(overdue).forEach((i) => { debtOf[i.room_id] = (debtOf[i.room_id] || 0) + num(i.total_amount) - num(i.paid_amount); });
+
+  // Tòa → tầng → phòng
+  const tree = {};
+  rooms.forEach((r) => {
+    const b = r.building_name || "Khu chính";
+    const f = r.floor ?? "?";
+    ((tree[b] = tree[b] || {})[f] = tree[b][f] || []).push(r);
+  });
+  const buildings = Object.keys(tree).sort();
+  const count = (st) => rooms.filter((r) => r.status === st).length;
+  const partial = !contracts.ok || !overdue.ok;
+  let current = buildings.length > 1 ? "" : buildings[0];
+
+  v.innerHTML = head("Sơ đồ phòng", `${rooms.length} phòng · ${count("OCCUPIED")} đang thuê · ${count("AVAILABLE")} còn trống`) + `
+    ${partial ? `<div class="note warn">${ico("alert", "sm")}<div>Chưa tải được ${!contracts.ok ? "tên người thuê" : ""}${!contracts.ok && !overdue.ok ? " và " : ""}${!overdue.ok ? "công nợ" : ""}; sơ đồ chỉ hiện trạng thái phòng.</div></div>` : ""}
+    <div class="card" style="margin-bottom:14px"><div class="toolbar" style="border:0;justify-content:space-between">
+      ${buildings.length > 1 ? `<div class="seg" id="seg"><button data-b="" class="on">Tất cả tòa</button>${buildings.map((b) =>
+        `<button data-b="${esc(b)}">Tòa ${esc(b)}</button>`).join("")}</div>` : `<b>Tòa ${esc(buildings[0] || "")}</b>`}
+      <div class="legend-row">
+        <span><i style="background:var(--acc)"></i>Đang thuê (${count("OCCUPIED")})</span>
+        <span><i style="background:var(--blue)"></i>Còn trống (${count("AVAILABLE")})</span>
+        <span><i style="background:var(--amber)"></i>Bảo trì (${count("MAINTENANCE")})</span>
+        ${count("RESERVED") ? `<span><i style="background:#a78bfa"></i>Đã giữ chỗ (${count("RESERVED")})</span>` : ""}
+        <span><i style="background:var(--red)"></i>Quá hạn tiền</span>
+      </div></div></div>
+    <div id="plan"></div>`;
+
+  const render = () => {
+    const list = current ? [current] : buildings;
+    $("#plan").innerHTML = list.length ? list.map((b) => {
+      const floors = Object.keys(tree[b]).sort((x, y) => (Number(y) || 0) - (Number(x) || 0));
+      const all = floors.flatMap((f) => tree[b][f]);
+      return `<div class="card" style="margin-bottom:14px">
+        <div class="card-h">${ico("home")}<h3>Tòa ${esc(b)}</h3>
+          <span class="muted">${all.filter((r) => r.status === "OCCUPIED").length}/${all.length} phòng có người</span></div>
+        ${floors.map((f) => {
+          const rs = tree[b][f].sort((x, y) => x.room_number.localeCompare(y.room_number, "vi", { numeric: true }));
+          const free = rs.filter((r) => r.status === "AVAILABLE").length;
+          return `<div class="floor"><div class="floor-lab"><b>${f === "?" ? "Khác" : "Tầng " + esc(f)}</b>${free ? `${free} trống` : "Kín phòng"}</div>
+            <div class="tiles">${rs.map((r) => {
+              const who = tenantOf[r.id];
+              const debt = debtOf[r.id];
+              const label = (LABEL.room[r.status] || [r.status])[0];
+              return `<button type="button" class="tile ${esc(r.status)}" data-id="${esc(r.id)}"
+                  aria-label="Phòng ${esc(r.room_number)}, ${esc(label)}${who ? ", " + esc(who) : ""}${debt ? ", đang nợ " + fmtMoney(debt) : ""}">
+                ${debt ? `<span class="flag" title="Quá hạn ${fmtMoney(debt)}">Nợ</span>` : ""}
+                <div class="no">${esc(r.room_number)}</div>
+                <div class="who">${who ? esc(who) : esc(label)}</div>
+                <div class="meta">${r.area_m2 ? num(r.area_m2) + " m² · " : ""}${(num(r.base_price) / 1e6).toLocaleString("vi-VN")} tr</div>
+              </button>`;
+            }).join("")}</div></div>`;
+        }).join("")}
+      </div>`;
+    }).join("") : `<div class="card">${empty("door", "Chưa có phòng nào")}</div>`;
+    $$(".tile", $("#plan")).forEach((t) => t.addEventListener("click", () =>
+      roomDetail(rooms.find((x) => x.id === t.dataset.id))));
+  };
+  $$("#seg button").forEach((btn) => btn.addEventListener("click", () => {
+    $$("#seg button").forEach((x) => x.classList.toggle("on", x === btn));
+    current = btn.dataset.b; render();
+  }));
+  render();
 };
 
 async function roomDetail(r) {

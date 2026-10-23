@@ -246,6 +246,31 @@
   .bill-list .item:hover { background: var(--hover); }
   .bill-list .item:last-child { border-bottom: 0; }
 
+  /* Sơ đồ phòng theo tầng */
+  .legend-row { display: flex; gap: 16px; flex-wrap: wrap; color: var(--txt2); font-size: 12.5px; }
+  .legend-row span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend-row i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .floor { display: grid; grid-template-columns: 76px 1fr; gap: 14px; padding: 14px 18px; border-bottom: 1px dashed var(--line); }
+  .floor:last-child { border-bottom: 0; }
+  .floor-lab { color: var(--muted); font-size: 12.5px; font-weight: 600; padding-top: 10px; }
+  .floor-lab b { display: block; color: var(--txt); font-size: 15px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; }
+  .tile { position: relative; text-align: left; cursor: pointer; border-radius: 9px; padding: 10px 11px;
+          border: 1px solid var(--line2); border-top: 3px solid var(--muted); background: var(--panel2);
+          color: var(--txt); font: inherit; transition: transform .1s, border-color .15s; min-height: 82px; }
+  .tile:hover { transform: translateY(-1px); border-color: var(--txt2); }
+  .tile:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+  .tile .no { font-weight: 700; font-size: 15px; }
+  .tile .who { font-size: 12px; color: var(--txt2); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile .meta { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+  .tile.OCCUPIED { border-top-color: var(--acc); }
+  .tile.AVAILABLE { border-top-color: var(--blue); background: rgba(96,165,250,.06); }
+  .tile.MAINTENANCE { border-top-color: var(--amber); background: rgba(245,158,11,.06); }
+  .tile.RESERVED { border-top-color: #a78bfa; }
+  .tile .flag { position: absolute; top: 8px; right: 8px; font-size: 10.5px; font-weight: 600; padding: 1px 6px;
+                border-radius: 99px; background: var(--red-soft); color: var(--red); }
+  @media (max-width: 760px) { .floor { grid-template-columns: 1fr; gap: 6px; } .floor-lab { padding-top: 0; } }
+
   .mobile-top { display: none; }
   @media (max-width: 900px) {
     #login-wrap { grid-template-columns: 1fr; }
@@ -294,6 +319,7 @@
   <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></symbol>
   <symbol id="i-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></symbol>
   <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></symbol>
   <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></symbol>
 </svg>
 
@@ -351,6 +377,6 @@
 </div>
 <div id="toasts"></div>
 
-<script src="/app.js?v=20261023" defer></script>
+<script src="/app.js?v=20261023b" defer></script>
 </body>
 </html>
