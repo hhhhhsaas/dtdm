@@ -39,7 +39,9 @@ class RoommateCreate(BaseModel):
 
     full_name: str = Field(min_length=2, max_length=100)
     phone: str = Field(min_length=9, max_length=15)
-    id_card_number: str | None = Field(default=None, max_length=20)
+    # Nhận số đầy đủ để đối chiếu giấy tờ, nhưng CHỈ LƯU 4 số cuối
+    # (xem models.ContractRoommate.id_card_last4).
+    id_card_number: str | None = Field(default=None, pattern=r"^(?:\d{9}|\d{12})$")
     tenant_id: uuid.UUID | None = None
     is_guarantor: bool = False
 
@@ -61,7 +63,7 @@ class RoommateResponse(BaseModel):
     tenant_id: uuid.UUID | None
     full_name: str
     phone: str
-    id_card_number: str | None
+    id_card_last4: str | None
     is_guarantor: bool
     created_at: datetime
 

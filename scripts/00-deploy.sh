@@ -223,6 +223,7 @@ make health || warn "Có service chưa healthy — xem: make logs"
 # ============================================================================
 IP_DISPLAY="$(grep -E '^PUBLIC_IP=' .env | head -1 | cut -d= -f2- | awk '{print $1}')"
 ADMIN_PWD="$(cat secrets/admin_password.txt 2>/dev/null || echo 'xem secrets/admin_password.txt')"
+TENANT_PWD="$(cat secrets/tenant_demo_password.txt 2>/dev/null || echo 'xem secrets/tenant_demo_password.txt')"
 
 printf "\n${BOLD}${GREEN}════════════════════════════════════════════════════════════${NC}\n"
 printf "${BOLD}${GREEN}  ✅ TRIỂN KHAI HOÀN TẤT${NC}\n"
@@ -235,7 +236,7 @@ cat <<EOF
   👤 Tài khoản demo:
        admin  / ${ADMIN_PWD}
        quanly / ${ADMIN_PWD}
-       khach01 … khach12  /  Tenant@12345
+       khach01 … khach12  /  ${TENANT_PWD}
 
   ⚠️  Chứng chỉ tự ký → trình duyệt cảnh báo "Not secure".
       Bấm Advanced → Proceed để tiếp tục (bình thường ở môi trường demo).

@@ -913,7 +913,7 @@ async def create_incident(
     # hộ nhà mình để gây phiền cơ sở khác). Luôn gán theo tài khoản đang đăng.
     reporter_name = payload.reported_by_name or user.username
     if user.role is Role.TENANT:
-        payload.reported_by_tenant_id = None
+        payload.reported_by_tenant_id = user.tenant_id      # từ JWT, không từ client
         payload.reported_by_user_id = user.id
         reporter_name = user.username
 

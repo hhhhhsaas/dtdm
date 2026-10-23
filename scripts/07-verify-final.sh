@@ -122,7 +122,8 @@ login() {  # $1=username  $2=password  $3=tên hiển thị
     fi
 }
 login "admin"  "$ADMIN_PW"   "Quản trị viên"
-login "khach01" "Tenant@12345" "Người thuê"
+TENANT_PW="$(cat secrets/tenant_demo_password.txt 2>/dev/null || echo 'Tenant@12345')"
+login "khach01" "$TENANT_PW" "Người thuê"
 
 # ----------------------------------------------------------------------------
 log "BƯỚC 5 — Smoke test 26 kiểm tra (make test-int)"
@@ -150,7 +151,7 @@ printf "\n====================================================================\n
 if [[ "$FAIL" -eq 0 ]]; then
     printf "${G}  KẾT QUẢ: TẤT CẢ ĐẠT — hệ thống sẵn sàng demo${N}\n"
     printf "  • Web    : https://localhost/\n"
-    printf "  • API    : 8001–8008 ; tài khoản: admin/%s ; khach01/Tenant@12345\n" "$ADMIN_PW"
+    printf "  • API    : 8001–8008 ; tài khoản: admin/%s ; khach01/%s\n" "$ADMIN_PW" "$TENANT_PW"
     printf "  • Grafana: http://localhost:3000/ (admin/%s — dùng chung secret admin_password)\n" "$ADMIN_PW"
     printf "====================================================================\n"
     exit 0

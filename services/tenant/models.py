@@ -39,8 +39,8 @@ from sqlalchemy import (
     Index,
     String,
     Text,
-    UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -93,8 +93,12 @@ class Tenant(Base):
     __tablename__ = "tenants"
     __table_args__ = (
         # Blind index của CCCD: cho phép chặn trùng mà vẫn giữ dữ liệu mã hóa.
-        # UNIQUE + NULL cho phép nhiều người không cung cấp CCCD.
-        UniqueConstraint("id_card_bidx", name="uq_tenant_id_card"),
+        # ⭐ UNIQUE theo (cơ sở, CCCD) và chỉ trên hồ sơ CHƯA xoá:
+        #   - Toàn hệ thống như trước = quản lý cơ sở A thử số CCCD là biết
+        #     người đó có đang thuê ở cơ sở B không (rò rỉ giữa các chủ trọ).
+        #   - Tính cả hồ sơ đã xoá = người thuê cũ quay lại không tạo được hồ sơ.
+        Index("uq_tenant_property_id_card", "property_id", "id_card_bidx", unique=True,
+              postgresql_where=text("deleted_at IS NULL AND id_card_bidx IS NOT NULL")),
         Index("ix_tenant_property_status", "property_id", "is_active"),
         Index("ix_tenant_phone", "phone"),
         CheckConstraint("gender IS NULL OR gender IN ('M','F','OTHER')",

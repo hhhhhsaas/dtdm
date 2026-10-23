@@ -17,9 +17,11 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -36,12 +38,23 @@ class Role(str, Enum):
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        # ⭐ UNIQUE chỉ trên tài khoản CHƯA xoá mềm. UNIQUE toàn bảng khiến
+        #    username/email của tài khoản đã xoá bị chiếm vĩnh viễn.
+        Index("uq_users_username_live", "username", unique=True,
+              postgresql_where=text("deleted_at IS NULL")),
+        Index("uq_users_email_live", "email", unique=True,
+              postgresql_where=text("deleted_at IS NULL")),
+        # Một hồ sơ người thuê chỉ gắn với tối đa 1 tài khoản đang dùng.
+        Index("uq_users_tenant_live", "tenant_id", unique=True,
+              postgresql_where=text("tenant_id IS NOT NULL AND deleted_at IS NULL")),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    username: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
-    email: Mapped[str] = mapped_column(String(150), unique=True, index=True, nullable=False)
+    username: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
+    email: Mapped[str] = mapped_column(String(150), index=True, nullable=False)
     # Argon2id hash — KHÔNG BAO GIỜ lưu mật khẩu gốc
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -51,6 +64,10 @@ class User(Base):
     # ⭐ Ràng buộc multi-tenant: MANAGER chỉ thấy đúng cơ sở này.
     # NULL = quản trị nhiều cơ sở (ADMIN).
     property_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), index=True)
+    # ⭐ Liên kết tài khoản TENANT ↔ hồ sơ ở tenant-service (tham chiếu logic,
+    # không FK vì khác DB). Trước đây chỉ dựa vào quy ước "trùng UUID", nên
+    # người thuê tạo qua API không có cách nào đăng nhập xem hóa đơn của mình.
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_locked: Mapped[bool] = mapped_column(Boolean, default=False)

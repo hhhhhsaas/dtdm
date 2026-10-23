@@ -53,6 +53,8 @@ class UserCreate(BaseModel):
     phone: Phone | None = None
     role: Literal["ADMIN", "MANAGER", "TENANT"] = "TENANT"
     property_id: uuid.UUID | None = None
+    # Bắt buộc với TENANT: id hồ sơ ở tenant-service (tham chiếu logic)
+    tenant_id: uuid.UUID | None = None
 
     @field_validator("password")
     @classmethod
@@ -106,6 +108,7 @@ class UserResponse(BaseModel):
     phone: str | None
     role: str
     property_id: uuid.UUID | None
+    tenant_id: uuid.UUID | None = None
     is_active: bool
     is_locked: bool
     last_login_at: datetime | None

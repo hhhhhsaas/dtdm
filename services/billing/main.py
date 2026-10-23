@@ -1152,16 +1152,18 @@ async def list_my_invoices(
     """
     Người thuê chỉ xem được hóa đơn của chính mình.
 
-    ⭐ Lọc theo `tenant_id == user.id`: tài khoản TENANT dùng CHUNG UUID với
-       hồ sơ người thuê (seed_auth/seed_tenant tạo theo TENANT_IDS). Không nhận
-       tenant_id từ query — nếu nhận, đổi tham số là xem được hóa đơn người khác.
-       Đặt TRƯỚC route `/{invoice_id}` để "mine" không bị hiểu là UUID.
+    ⭐ Lọc theo claim `tenant_id` trong JWT (auth-service lấy từ cột
+       users.tenant_id). Không nhận tenant_id từ query — nếu nhận, đổi tham số
+       là xem được hóa đơn người khác. Đặt TRƯỚC route `/{invoice_id}` để
+       "mine" không bị hiểu là UUID.
     """
+    if user.tenant_id is None:
+        return []      # tài khoản chưa gắn hồ sơ người thuê
     from sqlalchemy.orm import selectinload
     rows = (await session.execute(
         select(Invoice)
         .options(selectinload(Invoice.details))
-        .where(Invoice.tenant_id == user.id)
+        .where(Invoice.tenant_id == user.tenant_id)
         .order_by(Invoice.period.desc())
         .limit(limit)
     )).scalars().all()

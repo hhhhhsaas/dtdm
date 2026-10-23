@@ -48,7 +48,13 @@ echo ""
 echo "═══ Tạo bí mật trong $SECRET_DIR ═══"
 echo ""
 
-create_secret db_password.txt            32  "Mật khẩu PostgreSQL (dùng cho CẢ 8 DB)"
+create_secret db_password.txt            32  "Mật khẩu superuser PostgreSQL (chỉ cho backup/quản trị)"
+# Mỗi service một role DB riêng (không phải superuser). Lộ mật khẩu của
+# room-service KHÔNG mở được db_auth hay db_billing.
+for svc in auth room tenant contract billing notify maintenance report; do
+    create_secret "db_password_${svc}.txt" 32 "Mật khẩu role svc_${svc} (chỉ db_${svc})"
+done
+create_secret tenant_demo_password.txt   16  "Mật khẩu chung của 12 tài khoản người thuê mẫu"
 create_secret jwt_secret.txt             64  "Khóa ký JWT — đỔI => mọi phiên đăng nhập bị vô hiệu"
 create_secret admin_password.txt         20  "Mật khẩu tài khoản admin + Grafana"
 create_secret minio_root_password.txt    40  "Mật khẩu root của MinIO"

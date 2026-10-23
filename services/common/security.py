@@ -105,6 +105,7 @@ class TokenPayload(BaseModel):
     username: str
     role: Role
     property_id: uuid.UUID | None = None   # ⭐ ràng buộc multi-tenant
+    tenant_id: uuid.UUID | None = None     # hồ sơ người thuê (chỉ vai trò TENANT)
     exp: datetime
     iat: datetime
     iss: str = "qlpt-auth-service"
@@ -139,9 +140,14 @@ def create_access_token(
     username: str,
     role: Role,
     property_id: uuid.UUID | str | None = None,
+    tenant_id: uuid.UUID | str | None = None,
 ) -> str:
     """
     Access token sống NGẮN (15 phút).
+
+    `tenant_id` liên kết tài khoản TENANT với hồ sơ ở tenant-service
+    (users.tenant_id). Service khác lọc dữ liệu "của tôi" theo claim này —
+    không bao giờ theo tham số client gửi lên.
 
     Vì sao ngắn? Mục đích: giảm thời gian mà một token bị lộ vẫn dùng được.
     Đánh đổi: phải refresh thường xuyên → nhưng đó là chấp nhận được
@@ -153,6 +159,7 @@ def create_access_token(
             "username": username,
             "role": role.value if isinstance(role, Role) else role,
             "property_id": str(property_id) if property_id else None,
+            "tenant_id": str(tenant_id) if tenant_id else None,
             "typ": "access",
         },
         timedelta(minutes=settings.access_token_ttl_minutes),
@@ -230,6 +237,7 @@ def decode_token(token: str, expected_type: str = "access") -> TokenPayload:
         username=payload.get("username", ""),
         role=Role(payload["role"]),
         property_id=uuid.UUID(payload["property_id"]) if payload.get("property_id") else None,
+        tenant_id=uuid.UUID(payload["tenant_id"]) if payload.get("tenant_id") else None,
         exp=payload["exp"],
         iat=payload["iat"],
         iss=payload.get("iss", settings.jwt_issuer),
@@ -250,6 +258,7 @@ class CurrentUser(BaseModel):
     username: str
     role: Role
     property_id: uuid.UUID | None
+    tenant_id: uuid.UUID | None = None
 
     @property
     def level(self) -> int:
@@ -326,6 +335,7 @@ async def get_current_user(
         username=payload.username,
         role=payload.role,
         property_id=payload.property_id,
+        tenant_id=payload.tenant_id,
     )
 
 

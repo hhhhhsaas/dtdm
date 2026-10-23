@@ -267,6 +267,8 @@ class Invoice(Base):
         UniqueConstraint("contract_id", "period", name="uq_invoice_contract_period"),
         CheckConstraint("total_amount >= 0", name="chk_invoice_total_non_negative"),
         CheckConstraint("paid_amount >= 0", name="chk_invoice_paid_non_negative"),
+        # R8 ở tầng DB: chặn thu vượt kể cả khi ai đó UPDATE tay hoặc code lỗi.
+        CheckConstraint("paid_amount <= total_amount", name="chk_invoice_paid_not_over_total"),
         CheckConstraint("due_date >= period", name="chk_invoice_due_after_period"),
         # Truy vấn báo cáo: doanh thu theo tháng, theo cơ sở, trạng thái
         Index("ix_invoice_property_period", "property_id", "period"),
@@ -324,8 +326,12 @@ class Invoice(Base):
     details: Mapped[list[InvoiceDetail]] = relationship(
         back_populates="invoice", cascade="all, delete-orphan", lazy="selectin"
     )
+    # ⭐ KHÔNG cascade xoá: thanh toán là chứng từ tài chính. Xoá hóa đơn mà
+    #    mất luôn lịch sử thu tiền thì sổ sách không đối chiếu được nữa.
+    #    passive_deletes="all": để DB (ON DELETE RESTRICT) chặn, ORM không tự
+    #    đặt invoice_id = NULL cho các khoản thanh toán.
     payments: Mapped[list[Payment]] = relationship(
-        back_populates="invoice", cascade="all, delete-orphan",
+        back_populates="invoice", cascade="save-update, merge", passive_deletes="all",
         lazy="noload", order_by="Payment.received_at",
     )
 
@@ -395,7 +401,7 @@ class Payment(Base):
         PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     invoice_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("invoices.id", ondelete="CASCADE"), index=True
+        PGUUID(as_uuid=True), ForeignKey("invoices.id", ondelete="RESTRICT"), index=True
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 0), nullable=False)
     method: Mapped[str] = mapped_column(String(20), nullable=False)

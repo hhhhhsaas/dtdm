@@ -222,7 +222,7 @@ $("#login-form").addEventListener("submit", async (e) => {
 if (new URLSearchParams(location.search).has("demo")) $(".demo").classList.remove("hidden");
 $$(".demo .chip").forEach((b) => b.addEventListener("click", () => {
   $("#u").value = b.dataset.user;
-  $("#p").value = b.dataset.user === "khach01" ? "Tenant@12345" : "";
+  $("#p").value = "";   // không điền sẵn mật khẩu: mật khẩu mẫu nằm trong secrets/
   $("#p").focus();
 }));
 

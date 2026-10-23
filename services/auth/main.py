@@ -21,7 +21,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from common import (
@@ -133,13 +133,37 @@ def _client_ip(request: Request) -> str:
     """
     Lấy IP thật của client.
 
-    ⭐ nginx PHẢI truyền X-Forwarded-For. Nếu không có, ta dùng X-Real-IP,
-    rồi mới fallback về IP của chính nginx (không chính xác nhưng còn hơn).
+    ⭐ Tin X-Real-IP (nginx tự đặt = $remote_addr), KHÔNG tin phần tử đầu của
+       X-Forwarded-For: phần đó do client gửi lên, ai cũng ghi IP giả được và
+       nhật ký đăng nhập/kiểm toán mất giá trị. Service chỉ nhận request qua
+       nginx (mạng nội bộ), nên header nginx đặt là nguồn đáng tin duy nhất.
     """
-    xff = request.headers.get("X-Forwarded-For")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.headers.get("X-Real-IP", request.client.host if request.client else "unknown")
+    real = request.headers.get("X-Real-IP")
+    if real:
+        return real.strip()
+    return request.client.host if request.client else "unknown"
+
+
+#: Giữ lịch sử đăng nhập 90 ngày, refresh token đã thu hồi/hết hạn 30 ngày.
+#: Đủ để điều tra sự cố, không tích luỹ IP/User-Agent vô thời hạn.
+LOGIN_ATTEMPT_RETENTION_DAYS = 90
+REFRESH_TOKEN_RETENTION_DAYS = 30
+_last_purge = 0.0
+
+
+async def _purge_old_auth_data(session: AsyncSession) -> None:
+    """Dọn dữ liệu cũ, tối đa 1 lần/giờ/tiến trình (gọi trong luồng đăng nhập)."""
+    global _last_purge
+    import time
+    if time.monotonic() - _last_purge < 3600:
+        return
+    _last_purge = time.monotonic()
+    now = datetime.now(UTC)
+    await session.execute(delete(LoginAttempt).where(
+        LoginAttempt.created_at < now - timedelta(days=LOGIN_ATTEMPT_RETENTION_DAYS)))
+    cutoff = now - timedelta(days=REFRESH_TOKEN_RETENTION_DAYS)
+    await session.execute(delete(RefreshToken).where(
+        (RefreshToken.revoked_at < cutoff) | (RefreshToken.expires_at < cutoff)))
 
 
 #: Refresh token của trình duyệt nằm trong cookie HttpOnly — JavaScript không
@@ -260,7 +284,10 @@ async def login(
 
     user = (await session.execute(
         select(User).where(
-            (User.username == identifier) | (User.email == identifier.lower())
+            (User.username == identifier) | (User.email == identifier.lower()),
+            # Tài khoản đã xoá mềm không đăng nhập được, và username của nó
+            # có thể đã được cấp lại cho người khác (UNIQUE chỉ trên bản sống).
+            User.deleted_at.is_(None),
         )
     )).scalar_one_or_none()
 
@@ -313,9 +340,10 @@ async def login(
     user.last_login_at = datetime.now(UTC)
     await _record_attempt(session, request, identifier, user.id, True)
     await _revoke_old_sessions(session, user.id)
+    await _purge_old_auth_data(session)
 
     access_token = create_access_token(
-        user.id, user.username, Role(user.role), user.property_id
+        user.id, user.username, Role(user.role), user.property_id, user.tenant_id
     )
     refresh_raw = create_refresh_token(user.id)
 
@@ -399,13 +427,15 @@ async def refresh(
         raise UnauthorizedError("Refresh token không hợp lệ hoặc đã hết hạn")
 
     user = await session.get(User, user_id)
-    if not user or not user.is_active or user.is_locked:
+    if not user or not user.is_active or user.is_locked or user.deleted_at:
         raise UnauthorizedError("Tài khoản không còn hợp lệ")
 
     # Thu hồi token cũ (rotation)
     stored.revoked_at = datetime.now(UTC)
 
-    access_token = create_access_token(user.id, user.username, Role(user.role), user.property_id)
+    access_token = create_access_token(
+        user.id, user.username, Role(user.role), user.property_id, user.tenant_id
+    )
     new_refresh = create_refresh_token(user.id)
     session.add(RefreshToken(
         user_id=user.id, token_hash=hash_token(new_refresh),
@@ -558,20 +588,31 @@ async def create_user(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> UserResponse:
     exists = (await session.execute(
-        select(User).where((User.username == payload.username) | (User.email == payload.email))
-    )).scalar_one_or_none()
+        select(User).where(
+            (User.username == payload.username) | (User.email == payload.email.lower())
+            | ((User.tenant_id == payload.tenant_id) if payload.tenant_id else False),
+            User.deleted_at.is_(None),
+        )
+    )).scalars().first()
     if exists:
-        raise ConflictError("Tên đăng nhập hoặc email đã được sử dụng")
+        raise ConflictError("Tên đăng nhập, email hoặc hồ sơ người thuê đã có tài khoản")
 
     # Ràng buộc: MANAGER bắt buộc phải có property_id
     if payload.role == "MANAGER" and not payload.property_id:
         raise BusinessRuleError("Quản lý phải được gán vào một cơ sở nhà trọ")
+    # Tài khoản người thuê phải gắn với đúng 1 hồ sơ — đó là cách các service
+    # khác biết "hóa đơn của tôi", "sự cố của tôi" là của ai.
+    if payload.role == "TENANT" and not (payload.tenant_id and payload.property_id):
+        raise BusinessRuleError("Tài khoản người thuê phải gắn với hồ sơ người thuê và cơ sở")
+    if payload.role != "TENANT" and payload.tenant_id:
+        raise BusinessRuleError("Chỉ tài khoản người thuê mới gắn hồ sơ người thuê")
 
     user = User(
         username=payload.username, email=payload.email.lower(),
         password_hash=hash_password(payload.password),
         full_name=payload.full_name, phone=payload.phone,
         role=payload.role, property_id=payload.property_id,
+        tenant_id=payload.tenant_id,
     )
     session.add(user)
     await session.flush()

@@ -33,7 +33,7 @@ VÌ SAO CONSUMER PHẢI IDEMPOTENT?
 RabbitMQ bảo đảm "at-least-once" delivery: nếu consumer chết sau khi xử lý
 nhưng chưa ACK, message sẽ được gửi lại → xử lý 2 lần.
 
-Giải pháp: bảng processed_events có UNIQUE trên event_id. Insert trong CÙNG
+Giải pháp: bảng processed_events có khoá (event_id, consumer). Insert trong CÙNG
 transaction với xử lý nghiệp vụ → nếu insert trùng thì cả transaction rollback
 → tự động bỏ qua.
 """
@@ -43,6 +43,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
@@ -88,25 +89,51 @@ CREATE INDEX IF NOT EXISTS ix_outbox_pending
 CREATE INDEX IF NOT EXISTS ix_outbox_aggregate
     ON outbox (aggregate_type, aggregate_id);
 
+-- ⭐ Khoá chính (event_id, consumer), KHÔNG chỉ event_id: một service có
+--    thể có nhiều consumer cùng nhận một event (VD report cập nhật dashboard
+--    và cập nhật công nợ). Khoá chỉ theo event_id thì consumer thứ hai thấy
+--    "đã xử lý" và âm thầm bỏ qua → số liệu lệch mà không ai biết.
 CREATE TABLE IF NOT EXISTS processed_events (
-    event_id     UUID        PRIMARY KEY,
+    event_id     UUID        NOT NULL,
     event_type   VARCHAR(100) NOT NULL,
     consumer     VARCHAR(100) NOT NULL,
-    processed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    processed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT pk_processed_events PRIMARY KEY (event_id, consumer)
 );
 
 CREATE INDEX IF NOT EXISTS ix_processed_at
     ON processed_events (processed_at);
 """
 
-PROCESSED_DDL = """
-CREATE TABLE IF NOT EXISTS processed_events (
-    event_id     UUID        PRIMARY KEY,
-    event_type   VARCHAR(100) NOT NULL,
-    consumer     VARCHAR(100) NOT NULL,
-    processed_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+#: Chuyển bảng cũ (khoá chính chỉ event_id) sang khoá (event_id, consumer).
+#: Một câu DO duy nhất — chạy nguyên khối, KHÔNG tách theo `;` như OUTBOX_DDL.
+PROCESSED_PK_MIGRATION = """
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_constraint
+               WHERE conname = 'processed_events_pkey'
+                 AND conrelid = 'processed_events'::regclass) THEN
+        -- Publisher và consumer có thể cùng tới đây lúc khởi động: khoá bảng
+        -- rồi kiểm tra lại, bên đến sau thấy đã đổi xong thì thôi.
+        LOCK TABLE processed_events IN ACCESS EXCLUSIVE MODE;
+        IF EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conname = 'processed_events_pkey'
+                     AND conrelid = 'processed_events'::regclass) THEN
+            ALTER TABLE processed_events DROP CONSTRAINT processed_events_pkey;
+            ALTER TABLE processed_events
+                ADD CONSTRAINT pk_processed_events PRIMARY KEY (event_id, consumer);
+        END IF;
+    END IF;
+END $$
 """
+
+#: Thời gian giữ lại. Outbox đã gửi chỉ cần để tra lỗi vài ngày; giữ mãi thì
+#: bảng phình ra và tích luỹ dữ liệu cá nhân trong payload (VD username + IP
+#: của sự kiện user.logged_in). processed_events phải dài hơn cửa sổ RabbitMQ
+#: có thể gửi lại (message TTL 7 ngày — xem infra/rabbitmq/definitions.json).
+OUTBOX_RETENTION_DAYS = 7
+PROCESSED_RETENTION_DAYS = 30
+_PURGE_EVERY_SECONDS = 3600
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +164,22 @@ async def ensure_outbox_schema(executor) -> None:
         ).strip()
         if stmt:
             await executor.execute(text(stmt))
+    await executor.execute(text(PROCESSED_PK_MIGRATION))
     _schema_ensured = True
+
+
+async def purge_old_events(executor) -> None:
+    """Xoá outbox đã gửi và processed_events quá hạn giữ (gọi định kỳ)."""
+    await executor.execute(
+        text("DELETE FROM outbox WHERE status = 'PUBLISHED' "
+             "AND published_at < now() - make_interval(days => :d)"),
+        {"d": OUTBOX_RETENTION_DAYS},
+    )
+    await executor.execute(
+        text("DELETE FROM processed_events "
+             "WHERE processed_at < now() - make_interval(days => :d)"),
+        {"d": PROCESSED_RETENTION_DAYS},
+    )
 
 
 
@@ -478,6 +520,7 @@ class EventBus:
         from .database import session_scope
 
         batch_size = 100
+        last_purge = 0.0
         while self._running:
             # ⭐ Bảo đảm broker đã kết nối (và consumer đã đăng ký) TRƯỚC khi
             #    thử publish — kể cả khi lần kết nối đầu tiên đã thất bại.
@@ -486,6 +529,9 @@ class EventBus:
             try:
                 async with session_scope() as session:
                     await ensure_outbox_schema(session)
+                    if time.monotonic() - last_purge > _PURGE_EVERY_SECONDS:
+                        await purge_old_events(session)
+                        last_purge = time.monotonic()
 
                     rows = (
                         await session.execute(
@@ -621,7 +667,9 @@ class IdempotentConsumer:
 
         try:
             async with session_scope() as session:
-                await session.execute(text(PROCESSED_DDL))
+                # Dùng chung hàm tạo schema (có bước chuyển khoá chính) — consumer
+                # có thể chạy trước publisher, không được INSERT vào bảng cũ.
+                await ensure_outbox_schema(session)
 
                 # Insert trước. Nếu event đã xử lý → unique violation → bỏ qua.
                 # Nhờ cùng transaction, nếu handler lỗi thì cả insert cũng rollback
@@ -630,7 +678,7 @@ class IdempotentConsumer:
                     text("""
                         INSERT INTO processed_events (event_id, event_type, consumer)
                         VALUES (:eid, :etype, :cname)
-                        ON CONFLICT (event_id) DO NOTHING
+                        ON CONFLICT (event_id, consumer) DO NOTHING
                     """),
                     {
                         "eid": str(event.event_id),

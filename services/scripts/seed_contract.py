@@ -131,9 +131,10 @@ async def seed(session: AsyncSession) -> dict:
         if status != "DRAFT":
             await upsert(session, TenantSnapshot, "id", {
                 "id": uid("snapshot", f"HDMB-{TODAY.year}-{cx:03d}"),
+                "contract_id": contract_id,
                 "tenant_id": tenant_id,
                 "full_name": full_name,
-                "id_card_number": TENANT_IDCARDS[tx - 1],
+                "id_card_last4": TENANT_IDCARDS[tx - 1][-4:],
                 "phone": phone,
                 "email": email,
                 "address": f"{TENANT_PROFILES[tx - 1][0]}, Việt Nam",
@@ -165,7 +166,7 @@ async def seed(session: AsyncSession) -> dict:
             "tenant_id": ref_tenant,
             "full_name": name,
             "phone": phone,
-            "id_card_number": None,
+            "id_card_last4": None,
             "is_guarantor": guarantor,
         })
         roommates += 1

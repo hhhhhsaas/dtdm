@@ -13,7 +13,7 @@ hợp đồng bị huỷ: nó chuyển sang CANCELLED và giữ nguyên để đ
 ===============================================================================
 BA BẢN SAO — VÌ SAO CÓ, KHÔNG PHẢI ĐỂ LỤC
 ===============================================================================
-  1. `tenants_snapshot`     — chụp lại họ tên/CCCD/điện thoại tại thời điểm ký.
+  1. `tenants_snapshot`     — chụp lại họ tên/4 số cuối CCCD/điện thoại lúc ký.
   2. `monthly_price` trong `contracts` — KHÔNG tham chiếu `rooms.base_price`.
   3. `deposit_amount`       — ghi rõ bao nhiêu, không suy ra từ lịch sử cọc.
 
@@ -105,10 +105,19 @@ class TenantSnapshot(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    # Bản chụp thuộc hợp đồng nào (cùng DB → FK thật). Trước đây thiếu cột
+    # này nên không truy ngược được bản chụp của hợp đồng nào. NULL chỉ còn ở
+    # bản ghi cũ không suy ra được hợp đồng.
+    contract_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("contracts.id", ondelete="RESTRICT"), index=True
+    )
     # KHÔNG có ForeignKey — chỉ là tham chiếu logic tới tenant-service.
     tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), index=True)
     full_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    id_card_number: Mapped[str | None] = mapped_column(String(20))
+    # ⭐ Chỉ lưu 4 số cuối CCCD. Số đầy đủ đã được mã hóa AES-256-GCM ở
+    #    tenant-service; chép bản rõ sang đây làm mọi công sức mã hóa vô
+    #    nghĩa (lấy được db_contract hay bản backup là có CCCD của tất cả).
+    id_card_last4: Mapped[str | None] = mapped_column(String(4))
     phone: Mapped[str] = mapped_column(String(15), nullable=False)
     email: Mapped[str | None] = mapped_column(String(150))
     address: Mapped[str | None] = mapped_column(Text)
@@ -223,7 +232,9 @@ class Contract(Base):
     )
     payments: Mapped[list[ContractPayment]] = relationship(
         back_populates="contract",
-        cascade="all, delete-orphan",
+        # Phiếu thu cọc là chứng từ: không xoá theo hợp đồng (DB: ON DELETE RESTRICT).
+        cascade="save-update, merge",
+        passive_deletes="all",
         lazy="noload",
         order_by="ContractPayment.paid_at",
     )
@@ -279,7 +290,8 @@ class ContractRoommate(Base):
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), index=True)
     full_name: Mapped[str] = mapped_column(String(100), nullable=False)
     phone: Mapped[str] = mapped_column(String(15), nullable=False)
-    id_card_number: Mapped[str | None] = mapped_column(String(20))
+    # Chỉ 4 số cuối — xem giải thích ở TenantSnapshot.id_card_last4.
+    id_card_last4: Mapped[str | None] = mapped_column(String(4))
     # Người ký là người bảo lãnh tiền cọc chung, không thì ai chịu trách nhiệm?
     is_guarantor: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -314,7 +326,7 @@ class ContractPayment(Base):
         PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     contract_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("contracts.id", ondelete="CASCADE"), index=True
+        PGUUID(as_uuid=True), ForeignKey("contracts.id", ondelete="RESTRICT"), index=True
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 0), nullable=False)
     method: Mapped[str] = mapped_column(String(30), nullable=False)   # CASH/BANK_TRANSFER/MOMO

@@ -33,7 +33,18 @@ from pathlib import Path
 BASE = os.environ.get("QLPT_BASE_URL", "http://127.0.0.1")
 ADMIN_USER = os.environ.get("QLPT_ADMIN_USER", "admin")
 TENANT_USER = os.environ.get("QLPT_TENANT_USER", "khach01")
-TENANT_PWD = os.environ.get("QLPT_TENANT_PWD", "Tenant@12345")
+def _tenant_demo_password() -> str:
+    """Mật khẩu người thuê mẫu: biến môi trường → secrets/ → mặc định máy dev."""
+    if os.environ.get("QLPT_TENANT_PWD"):
+        return os.environ["QLPT_TENANT_PWD"]
+    path = Path(__file__).resolve().parents[1] / "secrets" / "tenant_demo_password.txt"
+    try:
+        return path.read_text(encoding="utf-8").strip() or "Tenant@12345"
+    except OSError:
+        return "Tenant@12345"
+
+
+TENANT_PWD = _tenant_demo_password()
 
 #: (cổng service, tên hiển thị) — 8009 scheduler không public nên kiểm riêng
 APP_PORTS = {

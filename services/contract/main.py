@@ -325,6 +325,7 @@ async def create_contract(
 
     # Bản chụp hồ sơ — đóng băng tại thời điểm tạo hợp đồng
     session.add(TenantSnapshot(
+        contract_id=contract.id,
         tenant_id=payload.primary_tenant_id,
         full_name=payload.primary_tenant_name,
         phone=payload.primary_tenant_phone,
@@ -823,7 +824,9 @@ async def set_roommates(
     contract.roommates.clear()
     await session.flush()
     for r in payload.roommates:
-        contract.roommates.append(ContractRoommate(**r.model_dump()))
+        data = r.model_dump()
+        card = data.pop("id_card_number", None)
+        contract.roommates.append(ContractRoommate(**data, id_card_last4=card[-4:] if card else None))
 
     await session.flush()
     logger.info("👥 Cập nhật %d bạn cùng phòng cho HĐ %s",

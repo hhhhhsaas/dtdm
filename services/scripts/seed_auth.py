@@ -43,36 +43,44 @@ from scripts._seed_common import (
     TENANT_NAMES,
 )
 
-#: Mật khẩu chung cho mọi tài khoản mẫu — dễ nhớ khi demo, dễ đổi khi thật.
+#: Mật khẩu mặc định khi CHƯA có secret (máy dev mới).
 DEFAULT_PASSWORD = "Admin@12345"
-TENANT_PASSWORD = "Tenant@12345"
+#: ⭐ Mật khẩu người thuê mẫu lấy từ secret tenant_demo_password, KHÔNG viết
+#:   cứng trong code nữa: chuỗi "Tenant@12345" nằm trong repo công khai và
+#:   trong file dump, nên 12 tài khoản mẫu thực chất ai cũng đăng nhập được.
+DEFAULT_TENANT_PASSWORD = "Tenant@12345"
 
 #: Tên file secret giống hệt cách `common/config.py` đọc (LOCAL_SECRETS_DIR).
 _SECRETS_DIR = Path("/run/secrets")
 _FALLBACK_DIR = Path(__file__).resolve().parents[2] / "secrets"
 
 
-def _read_admin_password() -> str:
-    """Lấy mật khẩu admin từ secret nếu có; thiếu thì dùng mặc định."""
+def _read_secret_or(name: str, default: str) -> str:
+    """Đọc secret theo tên; thiếu thì dùng mặc định (chỉ hợp lý trên máy dev)."""
     # Compose mount secret theo TÊN KEY (admin_password); file nguồn có .txt —
     # thử cả 2 quy ước (cùng cách common/config.read_secret).
     for base in (_SECRETS_DIR, _FALLBACK_DIR):
-        for cand in ("admin_password", "admin_password.txt"):
+        for cand in (name, name + ".txt"):
             path = base / cand
             if path.is_file():
                 value = path.read_text(encoding="utf-8").strip()
                 if value:
                     return value
-    return DEFAULT_PASSWORD
+    return default
+
+
+def _read_admin_password() -> str:
+    return _read_secret_or("admin_password", DEFAULT_PASSWORD)
 
 
 async def seed(session: AsyncSession) -> dict:
     now = datetime.now(UTC)
     admin_pwd = _read_admin_password()
+    tenant_pwd = _read_secret_or("tenant_demo_password", DEFAULT_TENANT_PASSWORD)
     created = 0
 
     async def put(user_id, username, email, full_name, phone, role, password,
-                  property_id) -> None:
+                  property_id, tenant_id=None) -> None:
         nonlocal created
         existing = await session.get(User, user_id)
         if existing is None:
@@ -85,6 +93,7 @@ async def seed(session: AsyncSession) -> dict:
                 phone=phone,
                 role=role,
                 property_id=property_id,
+                tenant_id=tenant_id,
                 is_active=True,
                 password_changed_at=now,
             ))
@@ -98,6 +107,7 @@ async def seed(session: AsyncSession) -> dict:
             existing.phone = phone
             existing.role = role
             existing.property_id = property_id
+            existing.tenant_id = tenant_id
             existing.is_active = True
             existing.deleted_at = None
 
@@ -115,7 +125,8 @@ async def seed(session: AsyncSession) -> dict:
     for i, (full_name, phone, email) in enumerate(TENANT_NAMES, start=1):
         await put(
             TENANT_IDS[i - 1], f"khach{i:02d}", email, full_name, phone,
-            Role.TENANT.value, TENANT_PASSWORD, PROPERTY_ID,
+            Role.TENANT.value, tenant_pwd, PROPERTY_ID,
+            tenant_id=TENANT_IDS[i - 1],
         )
 
     # Tài khoản kỹ thuật cho các job nền — KHÔNG tạo ở đây, xem docstring.

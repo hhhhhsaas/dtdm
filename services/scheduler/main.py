@@ -295,6 +295,9 @@ class JobSpec:
     lock_ttl: int = LOCK_TTL
     #: Số lần thử lại ngoài cùng (0 = không thử lại).
     retries: int = JOB_RETRIES
+    #: Chạy bù 1 lần ngay khi scheduler khởi động. CHỈ bật cho job idempotent
+    #: và không gửi tin nhắn (chạy bù job nhắc nợ = người thuê nhận tin 2 lần).
+    catch_up: bool = False
 
     @property
     def lock_name(self) -> str:
@@ -315,6 +318,10 @@ def build_jobs() -> list[JobSpec]:
             trigger=CronTrigger(hour=2, minute=0, timezone=VN_TZ),
             run=job_contract_expire_due,
             description="Chuyển HĐ hết hạn → EXPIRED, trả phòng về trống",
+            # ⭐ Máy demo/VM thường TẮT lúc 02:00 → job lỡ hẹn quá 1 giờ thì
+            #    APScheduler bỏ qua hẳn, hợp đồng hết hạn vẫn ACTIVE nhiều ngày
+            #    (dữ liệu thật: HDMB-2026-001 hết hạn 15/10 vẫn ACTIVE ngày 20/10).
+            catch_up=True,
         ),
         JobSpec(
             name="contract-notify-expiring",
@@ -337,6 +344,7 @@ def build_jobs() -> list[JobSpec]:
             # Đối chiếu là job nặng nhất (quét cả 8 DB) — khoá sống lâu hơn để
             # không bị replica khác cướp mất khi job vẫn đang chạy.
             lock_ttl=1800,
+            catch_up=True,      # chỉ đọc + ghi read model, không gửi tin
         ),
         JobSpec(
             name="report-summary-log",
@@ -682,6 +690,12 @@ async def main() -> None:
             name=spec.name,
             replace_existing=True,
         )
+    # Chạy bù các job đánh dấu catch_up ngay sau khi khởi động (endpoint đích
+    # idempotent: chỉ đổi bản ghi CÒN cần đổi, chạy lại trên tập rỗng là no-op).
+    for spec in build_jobs():
+        if spec.catch_up:
+            scheduler.add_job(run_job, trigger="date", args=[spec],
+                              id=f"{spec.name}:catch-up", name=f"{spec.name} (chạy bù)")
     _SCHEDULER = scheduler
     scheduler.start()
     SCHEDULER_UP.set(1)

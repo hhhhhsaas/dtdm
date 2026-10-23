@@ -38,6 +38,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Numeric,
     SmallInteger,
@@ -133,11 +134,15 @@ class Property(Base):
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # ⭐ Không cascade xoá từ cơ sở xuống tòa/phòng (DB: ON DELETE RESTRICT).
+    #    Cơ sở chỉ xoá mềm; xoá cứng một cơ sở còn phòng/tòa phải bị chặn, vì
+    #    phòng là đích tham chiếu của hợp đồng, hóa đơn ở DB khác.
     buildings: Mapped[list[Building]] = relationship(
-        back_populates="property", cascade="all, delete-orphan", lazy="selectin"
+        back_populates="property", cascade="save-update, merge",
+        passive_deletes="all", lazy="selectin"
     )
     rooms: Mapped[list[Room]] = relationship(
-        back_populates="property", cascade="all, delete-orphan",
+        back_populates="property", cascade="save-update, merge", passive_deletes="all",
         lazy="noload", foreign_keys="Room.property_id",
     )
 
@@ -160,13 +165,15 @@ class Building(Base):
     __tablename__ = "buildings"
     __table_args__ = (
         UniqueConstraint("property_id", "name", name="uq_building_property_name"),
+        # Đích cho khoá ngoại kép rooms(building_id, property_id).
+        UniqueConstraint("id", "property_id", name="uq_building_id_property"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     property_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("properties.id", ondelete="CASCADE"), index=True
+        PGUUID(as_uuid=True), ForeignKey("properties.id", ondelete="RESTRICT"), index=True
     )
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     note: Mapped[str | None] = mapped_column(String(255))
@@ -177,7 +184,8 @@ class Building(Base):
 
     property: Mapped[Property] = relationship(back_populates="buildings")
     rooms: Mapped[list[Room]] = relationship(
-        back_populates="building", cascade="all, delete-orphan", lazy="noload"
+        back_populates="building", cascade="save-update, merge", passive_deletes="all",
+        lazy="noload", foreign_keys="Room.building_id",
     )
 
 
@@ -237,6 +245,13 @@ class Room(RoomFlags, Base):
             "property_id", "building_id", "room_number",
             name="uq_room_property_building_number",
         ),
+        # ⭐ Khoá ngoại kép: phòng và tòa nhà của nó PHẢI cùng một cơ sở. Trước
+        #    đây chỉ code ứng dụng kiểm tra; ai ghi thẳng vào DB vẫn gắn được
+        #    phòng của cơ sở A vào tòa nhà của cơ sở B.
+        ForeignKeyConstraint(
+            ["building_id", "property_id"], ["buildings.id", "buildings.property_id"],
+            name="fk_room_building_same_property", ondelete="RESTRICT",
+        ),
         # Ràng buộc nghiệp vụ đặt ở DB để không thể bị vòng qua.
         # Tầng DB là "chốt chặn cuối", code chỉ để báo lỗi đẹp hơn.
         CheckConstraint("area_m2 IS NULL OR area_m2 > 0", name="chk_room_area_positive"),
@@ -253,7 +268,7 @@ class Room(RoomFlags, Base):
         PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     property_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("properties.id", ondelete="CASCADE"), index=True
+        PGUUID(as_uuid=True), ForeignKey("properties.id", ondelete="RESTRICT"), index=True
     )
     building_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("buildings.id", ondelete="RESTRICT")
@@ -293,7 +308,7 @@ class Room(RoomFlags, Base):
     property: Mapped[Property] = relationship(
         back_populates="rooms", foreign_keys=[property_id]
     )
-    building: Mapped[Building] = relationship(back_populates="rooms")
+    building: Mapped[Building] = relationship(back_populates="rooms", foreign_keys=[building_id])
     amenities: Mapped[list[Amenity]] = relationship(
         secondary=room_amenities, lazy="selectin", back_populates="rooms"
     )

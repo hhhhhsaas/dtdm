@@ -51,6 +51,18 @@ secrets:
   # Khoá AES-256-GCM chỉ tenant-service cần (mã hóa CCCD). Cấp cho service
   # khác chỉ để "cho đủ" là mở rộng bề mặt tấn công vô nghĩa.
   data_encryption_key: { file: ./secrets/data_encryption_key.txt }
+  # Mỗi service một role PostgreSQL riêng (KHÔNG phải superuser) — xem
+  # infra/postgres/init/01-roles-and-databases.sh. db_password ở trên giờ
+  # chỉ còn là mật khẩu superuser, dành cho postgres/backup.
+  db_pw_auth:        { file: ./secrets/db_password_auth.txt }
+  db_pw_room:        { file: ./secrets/db_password_room.txt }
+  db_pw_tenant:      { file: ./secrets/db_password_tenant.txt }
+  db_pw_contract:    { file: ./secrets/db_password_contract.txt }
+  db_pw_billing:     { file: ./secrets/db_password_billing.txt }
+  db_pw_notify:      { file: ./secrets/db_password_notify.txt }
+  db_pw_maintenance: { file: ./secrets/db_password_maintenance.txt }
+  db_pw_report:      { file: ./secrets/db_password_report.txt }
+  tenant_demo_password: { file: ./secrets/tenant_demo_password.txt }
 
 x-common-env: &common-env
   TZ: Asia/Ho_Chi_Minh
@@ -61,8 +73,9 @@ x-common-env: &common-env
 # Cấu hình chung cho mọi microservice
 x-microservice: &microservice
   restart: unless-stopped
+  # ⭐ KHÔNG còn db_password (superuser) ở đây: mỗi service khai secret
+  #    db_pw_<svc> của riêng mình.
   secrets:
-    - db_password
     - jwt_secret
   environment: *common-env
   depends_on:
@@ -138,7 +151,8 @@ services:
       POSTGRES_INITDB_ARGS: "--data-checksums --encoding=UTF8 --locale=C"
       PGDATA: /var/lib/postgresql/data/pgdata
       TZ: Asia/Ho_Chi_Minh
-    secrets: [db_password]
+    secrets: [db_password, db_pw_auth, db_pw_room, db_pw_tenant, db_pw_contract,
+              db_pw_billing, db_pw_notify, db_pw_maintenance, db_pw_report]
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
@@ -266,10 +280,11 @@ services:
       SERVICE_NAME: auth-service
       PORT: "8001"
       DB_NAME: db_auth
-      DATABASE_URL: postgresql+asyncpg://${DB_USER:-qlpt}@postgres:5432/db_auth
+      DATABASE_URL: postgresql+asyncpg://svc_auth@postgres:5432/db_auth
+      DB_PASSWORD_SECRET: db_pw_auth
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-qlpt}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//qlpt
-    secrets: [db_password, jwt_secret, admin_password]
+    secrets: [db_pw_auth, jwt_secret, admin_password, tenant_demo_password]
     ports: ["127.0.0.1:8001:8001"]
     <<: *microservice
     healthcheck: &health8001
@@ -288,12 +303,14 @@ services:
       SERVICE_NAME: room-service
       PORT: "8002"
       DB_NAME: db_room
-      DATABASE_URL: postgresql+asyncpg://${DB_USER:-qlpt}@postgres:5432/db_room
+      DATABASE_URL: postgresql+asyncpg://svc_room@postgres:5432/db_room
+      DB_PASSWORD_SECRET: db_pw_room
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-qlpt}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//qlpt
       TENANT_SERVICE_URL: http://tenant:8003
       CONTRACT_SERVICE_URL: http://contract:8004
     ports: ["127.0.0.1:8002:8002"]
+    secrets: [db_pw_room, jwt_secret]
     <<: *microservice
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8002/health"]
@@ -311,12 +328,13 @@ services:
       SERVICE_NAME: tenant-service
       PORT: "8003"
       DB_NAME: db_tenant
-      DATABASE_URL: postgresql+asyncpg://${DB_USER:-qlpt}@postgres:5432/db_tenant
+      DATABASE_URL: postgresql+asyncpg://svc_tenant@postgres:5432/db_tenant
+      DB_PASSWORD_SECRET: db_pw_tenant
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/2
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-qlpt}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//qlpt
     # ⭐ Tenant là service DUY NHẤT được cấp khoá mã hóa dữ liệu: CCCD được
     #    lưu dạng AES-256-GCM + blind index HMAC (xem common/crypto.py).
-    secrets: [db_password, jwt_secret, data_encryption_key]
+    secrets: [db_pw_tenant, jwt_secret, data_encryption_key]
     ports: ["127.0.0.1:8003:8003"]
     <<: *microservice
     healthcheck:
@@ -335,12 +353,14 @@ services:
       SERVICE_NAME: contract-service
       PORT: "8004"
       DB_NAME: db_contract
-      DATABASE_URL: postgresql+asyncpg://${DB_USER:-qlpt}@postgres:5432/db_contract
+      DATABASE_URL: postgresql+asyncpg://svc_contract@postgres:5432/db_contract
+      DB_PASSWORD_SECRET: db_pw_contract
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/3
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-qlpt}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//qlpt
       ROOM_SERVICE_URL: http://room:8002
       TENANT_SERVICE_URL: http://tenant:8003
     ports: ["127.0.0.1:8004:8004"]
+    secrets: [db_pw_contract, jwt_secret]
     <<: *microservice
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8004/health"]
@@ -358,13 +378,15 @@ services:
       SERVICE_NAME: billing-service
       PORT: "8005"
       DB_NAME: db_billing
-      DATABASE_URL: postgresql+asyncpg://${DB_USER:-qlpt}@postgres:5432/db_billing
+      DATABASE_URL: postgresql+asyncpg://svc_billing@postgres:5432/db_billing
+      DB_PASSWORD_SECRET: db_pw_billing
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/4
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-qlpt}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//qlpt
       CONTRACT_SERVICE_URL: http://contract:8004
       ROOM_SERVICE_URL: http://room:8002
       TENANT_SERVICE_URL: http://tenant:8003
     ports: ["127.0.0.1:8005:8005"]
+    secrets: [db_pw_billing, jwt_secret]
     volumes: [billing_cache:/tmp/app]
     <<: *microservice
     deploy:
@@ -387,7 +409,8 @@ services:
       SERVICE_NAME: notification-service
       PORT: "8006"
       DB_NAME: db_notify
-      DATABASE_URL: postgresql+asyncpg://${DB_USER:-qlpt}@postgres:5432/db_notify
+      DATABASE_URL: postgresql+asyncpg://svc_notify@postgres:5432/db_notify
+      DB_PASSWORD_SECRET: db_pw_notify
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/5
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-qlpt}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//qlpt
       SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
@@ -397,6 +420,7 @@ services:
       # Điều khiển job nền: để "off" khi chạy nhiều replica (chống gửi trùng)
       RUN_SCHEDULER: "true"
     ports: ["127.0.0.1:8006:8006"]
+    secrets: [db_pw_notify, jwt_secret]
     <<: *microservice
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8006/health"]
@@ -414,13 +438,15 @@ services:
       SERVICE_NAME: maintenance-service
       PORT: "8007"
       DB_NAME: db_maintenance
-      DATABASE_URL: postgresql+asyncpg://${DB_USER:-qlpt}@postgres:5432/db_maintenance
+      DATABASE_URL: postgresql+asyncpg://svc_maintenance@postgres:5432/db_maintenance
+      DB_PASSWORD_SECRET: db_pw_maintenance
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/6
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-qlpt}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//qlpt
       ROOM_SERVICE_URL: http://room:8002
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-qlptadmin}
     ports: ["127.0.0.1:8007:8007"]
+    secrets: [db_pw_maintenance, jwt_secret]
     <<: *microservice
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8007/health"]
@@ -438,10 +464,12 @@ services:
       SERVICE_NAME: report-service
       PORT: "8008"
       DB_NAME: db_report
-      DATABASE_URL: postgresql+asyncpg://${DB_USER:-qlpt}@postgres:5432/db_report
+      DATABASE_URL: postgresql+asyncpg://svc_report@postgres:5432/db_report
+      DB_PASSWORD_SECRET: db_pw_report
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/7
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-qlpt}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//qlpt
     ports: ["127.0.0.1:8008:8008"]
+    secrets: [db_pw_report, jwt_secret]
     <<: *microservice
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8008/health"]
@@ -592,7 +620,8 @@ services:
       INVOICE_OVERDUE_GRACE_DAYS: "3"
       CONTRACT_EXPIRING_LOOKAHEAD_DAYS: "30"
       SCHEDULER_STARTUP_WAIT: "180"
-    secrets: [db_password, jwt_secret]
+    # Không dùng PostgreSQL → không cấp bất kỳ mật khẩu DB nào.
+    secrets: [jwt_secret]
     depends_on:
       postgres: { condition: service_healthy }
       redis:    { condition: service_healthy }

@@ -333,10 +333,10 @@ async def create_tenant(
     try:
         await session.flush()
     except IntegrityError as exc:
-        if "uq_tenant_id_card" in str(exc.orig):
+        if "uq_tenant_property_id_card" in str(exc.orig):
             raise ConflictError(
-                "CCCD này đã được đăng ký cho người thuê khác trong hệ thống. "
-                "Một CCCD chỉ được dùng cho 1 hồ sơ."
+                "CCCD này đã có hồ sơ trong cơ sở của bạn. Hãy tìm và cập nhật "
+                "hồ sơ cũ thay vì tạo mới."
             ) from exc
         if "ix_tenant_phone" in str(exc.orig):
             raise ConflictError(f"Số điện thoại {payload.phone} đã tồn tại") from exc
@@ -427,11 +427,14 @@ async def update_id_card(
     user.assert_property_access(tenant.property_id)
 
     bidx = blind_index(payload.id_card_number)
+    # Chỉ so trong CÙNG cơ sở và hồ sơ chưa xoá — khớp với chỉ mục UNIQUE.
+    # So toàn hệ thống sẽ để lộ tên/mã hồ sơ của cơ sở khác qua thông báo lỗi.
     duplicate = (await session.execute(
         select(Tenant).where(
             Tenant.id_card_bidx == bidx, Tenant.id != tenant_id,
+            Tenant.property_id == tenant.property_id, Tenant.deleted_at.is_(None),
         )
-    )).scalar_one_or_none()
+    )).scalars().first()
     if duplicate:
         raise ConflictError(
             f"CCCD này đã thuộc về hồ sơ của {duplicate.full_name} "

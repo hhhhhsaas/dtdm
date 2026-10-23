@@ -75,6 +75,10 @@ class Settings(BaseSettings):
         description="postgresql+asyncpg://user:pass@host:5432/db — BẮT BUỘC",
     )
     db_name: str = ""
+    #: Tên secret chứa mật khẩu DB của CHÍNH service này (VD db_pw_auth).
+    #: Mỗi service một role PostgreSQL riêng, không phải superuser — lộ 1
+    #: service không còn đồng nghĩa lộ cả 8 database.
+    db_password_secret: str = "db_password"
     sql_pool_size: int = Field(default=10, ge=1, le=100)
     sql_max_overflow: int = Field(default=10, ge=0, le=100)
     sql_pool_timeout: int = Field(default=30, ge=1)
@@ -196,7 +200,7 @@ class Settings(BaseSettings):
         creds, hostpart = rest.split("@", 1)
         if ":" in creds:            # URL đã có mật khẩu (vd test) → không đụng
             return self
-        pwd = read_secret("db_password.txt")
+        pwd = read_secret(self.db_password_secret)
         if not pwd:
             return self             # không có secret → giữ nguyên, để lỗi rõ ở tầng kết nối
         self.database_url = f"{scheme}://{creds}:{quote(pwd, safe='')}@{hostpart}"

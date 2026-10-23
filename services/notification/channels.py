@@ -45,7 +45,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from email.message import EmailMessage
 
-from jinja2 import Environment, StrictUndefined, select_autoescape
+from jinja2 import StrictUndefined, select_autoescape
+from jinja2.sandbox import SandboxedEnvironment
 
 from common.config import settings
 from models import Channel
@@ -61,7 +62,13 @@ logger = logging.getLogger(__name__)
 #:   nội dung kiểu "Xin chào , hóa đơn  kỳ  trị giá  đã phát hành" — người
 #:   thuê nhận được email vô nghĩa mà hệ thống báo là OK. Đây là loại lỗi
 #:   đắt nhất trong hệ thống thông báo: im lặng và sai.
-_JINJA = Environment(
+#:
+#: ⭐ `SandboxedEnvironment` chứ không phải `Environment`: nội dung mẫu nằm
+#:   trong DB và sửa được qua API. Với Environment thường, ai ghi được vào
+#:   bảng `templates` chỉ cần một mẫu kiểu
+#:   `{{ cycler.__init__.__globals__.os.popen('id').read() }}` là chạy lệnh
+#:   shell trong container. Sandbox chặn truy cập thuộc tính `__…__`.
+_JINJA = SandboxedEnvironment(
     autoescape=select_autoescape(enabled_extensions=("html", "xml"), default=False),
     trim_blocks=True,
     lstrip_blocks=True,

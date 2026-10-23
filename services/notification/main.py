@@ -525,10 +525,11 @@ async def _enqueue(
         )
     if not target:
         if target_channel == Channel.IN_APP.value:
-            # Kênh trong ứng dụng: "ai đọc" chính là tenant, nên vẫn ghi được với
-            # định danh hộp thư thay vì email. Bỏ qua ở đây sẽ mất thông báo dù
-            # hệ thống vẫn hoạt động bình thường.
-            target = str(tenant_id or property_id or "system")
+            # Kênh trong ứng dụng: ghi định danh HỘP THƯ thay vì email. Có tiền tố
+            # để cột `recipient` không lẫn UUID người thuê với UUID cơ sở (trước
+            # đây cùng là chuỗi UUID trơn, không phân biệt được ai là người nhận).
+            target = (f"tenant:{tenant_id}" if tenant_id
+                      else f"property:{property_id}" if property_id else "system")
         else:
             logger.warning("Bỏ qua thông báo '%s': không tìm được %s của người thuê %s",
                            template_code, target_channel.lower(), tenant_id)
