@@ -261,8 +261,8 @@ input[type="number"], .meter-in { font-family: var(--font-num); }
 /* --------------------------------------------------------------- login */
 .login { display: grid; place-items: center; min-height: 100vh; padding: var(--space-6) var(--space-4); }
 .login .card { width: min(24rem, 100%); padding: var(--space-8); }
-.login-logo { display: block; width: 6.5rem; height: auto; margin-bottom: var(--space-6); }
-.login h1 { font-size: var(--text-xl); margin-bottom: var(--space-6); }
+.login-logo { display: block; width: 6.5rem; height: auto; margin: 0 auto var(--space-6); }
+.login h1 { font-size: var(--text-xl); margin-bottom: var(--space-6); text-align: center; }
 .err { color: var(--color-accent); font-size: var(--text-sm); margin-top: var(--space-3); min-height: 1.4em; }
 .demo { margin-top: var(--space-6); padding-top: var(--space-4); border-top: var(--rule); font-size: var(--text-xs); }
 .demo p { margin-bottom: var(--space-2); color: var(--color-ink-2); }
