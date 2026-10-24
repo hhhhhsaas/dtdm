@@ -261,51 +261,64 @@ input[type="number"], .meter-in { font-family: var(--font-num); }
 /* --------------------------------------------------------------- login
    Trái: form trên nền giấy. Phải: mặt tiền dãy trọ lúc chạng vạng (cùng màu ở cả hai theme —
    đây là một bức tranh, không phải bề mặt UI). Đèn bật dần một lần khi mở trang. */
-.login { display: grid; grid-template-columns: minmax(0, 1fr); min-height: 100vh; }
-.login-side { display: grid; grid-template-rows: auto 1fr auto; gap: var(--space-8);
-              padding: var(--space-8) var(--space-6); }
+.login { display: grid; grid-template-columns: minmax(0, 1fr); min-height: 100vh; min-height: 100dvh; }
+.login-side { display: grid; grid-template-rows: auto 1fr auto; gap: var(--space-6);
+              padding: var(--space-5) var(--space-4) var(--space-6); }
 .login-brand { line-height: 0; }
 .login-brand img { height: 1.5rem; width: auto; }
 .login-form { align-self: center; width: min(22rem, 100%); }
-.login h1 { font-size: var(--text-2xl); line-height: 1.1; letter-spacing: -0.02em; }
-.login-lede { margin: var(--space-2) 0 var(--space-8); color: var(--color-ink-2); font-size: var(--text-md); }
+.login h1 { font-size: var(--text-xl); line-height: 1.1; letter-spacing: -0.02em; }
+.login-lede { margin: var(--space-2) 0 var(--space-6); color: var(--color-ink-2); font-size: var(--text-md); }
 .login input { padding-block: var(--space-3); font-size: var(--text-md); }
 
-.dusk { display: none; }
-@media (min-width: 56rem) {
-  .login { grid-template-columns: minmax(26rem, 1fr) minmax(0, 1.15fr); }
-  .login-side { padding: var(--space-12) clamp(var(--space-8), 6vw, 6rem); }
-  .dusk {
-    display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
-    position: relative; overflow: hidden; margin: var(--space-4); border-radius: 14px;
-    background: linear-gradient(oklch(24% 0.05 285), oklch(31% 0.07 262) 70%, oklch(36% 0.07 250));
-  }
+/* Tranh: điện thoại = dải ngang phía trên form; ≥56rem = nửa phải màn hình.
+   Toà nhà co theo cả chiều rộng lẫn chiều cao khung (cqw/cqh) để mái không bao giờ bị cắt. */
+.dusk {
+  --street: 1.25rem;
+  order: -1; height: 13rem; margin: var(--space-3) var(--space-3) 0;
+  display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+  position: relative; overflow: hidden; border-radius: 12px; container-type: size;
+  background: linear-gradient(oklch(24% 0.05 285), oklch(31% 0.07 262) 70%, oklch(36% 0.07 250));
 }
-.dusk::before, .dusk::after { content: ""; position: absolute; bottom: 3.5rem;   /* nhà hàng xóm, tắt đèn */
+@media (min-width: 56rem) {
+  .login { grid-template-columns: minmax(24rem, 1fr) minmax(0, 1.15fr); }
+  .login-side { gap: var(--space-8); padding: var(--space-12) clamp(var(--space-8), 6vw, 6rem); }
+  .login h1 { font-size: var(--text-2xl); }
+  .login-lede { margin-bottom: var(--space-8); }
+  .dusk { --street: 3.5rem; order: 0; height: auto; margin: var(--space-4); border-radius: 14px; }
+}
+@media (min-width: 56rem) and (max-height: 40rem) { .login-side { padding-block: var(--space-8); gap: var(--space-6); } }
+
+.dusk::before, .dusk::after { content: ""; position: absolute; bottom: var(--street);   /* nhà hàng xóm, tắt đèn */
                                background: oklch(25% 0.04 272); border-radius: 2px 2px 0 0; }
 .dusk::before { left: 4%; width: 17%; height: 30%; }
 .dusk::after  { right: 5%; width: 13%; height: 44%; }
-.facade { position: relative; z-index: 1; width: min(23rem, 62%); }
-.roof { display: block; width: 104%; height: 3.25rem; margin: 0 -2%; overflow: visible;
-        fill: none; stroke: #DC493A; stroke-width: 9; stroke-linejoin: miter; vector-effect: non-scaling-stroke; }
-.floors { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.5rem 1.25rem;
-          padding: 1.5rem 1.4rem 1.75rem; background: oklch(27% 0.025 285);
+/* Cao toà nhà ≈ 1,55 × rộng → rộng tối đa = (cao khung − đường − lề trên) / 1,6 */
+.facade { position: relative; z-index: 1; container-type: inline-size;
+          width: min(23rem, 62cqw, calc((100cqh - var(--street) - 1.5rem) / 1.6)); }
+.roof { display: block; width: 104%; height: 19cqi; margin: 0 -2%; overflow: visible;
+        fill: none; stroke: #DC493A; stroke-width: clamp(4px, 2.6cqi, 9px); stroke-linejoin: miter;
+        vector-effect: non-scaling-stroke; }
+.floors { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6.5cqi 5.4cqi;
+          padding: 6.5cqi 6cqi 7.5cqi; background: oklch(27% 0.025 285);
           border: 1px solid oklch(34% 0.025 285); border-bottom: 0; }
-.win { display: grid; gap: 0.4rem; justify-items: center; }
+.win { display: grid; gap: 1.7cqi; justify-items: center; }
 .win i { display: block; width: 100%; aspect-ratio: 1; border-radius: 3px; position: relative;
          background: oklch(20% 0.03 280); border: 1px solid oklch(36% 0.025 285); }
 .win i::after { content: ""; position: absolute; inset: 0 auto 0 50%; width: 1px;   /* song cửa sổ */
                 background: oklch(36% 0.025 285); }
-.win b { font: 400 0.6875rem/1 var(--font-num); color: oklch(62% 0.02 280); letter-spacing: 0.02em; }
+.win b { font: 400 clamp(0.5rem, 3cqi, 0.6875rem)/1 var(--font-num); color: oklch(62% 0.02 280); letter-spacing: 0.02em; }
+@container (max-width: 15rem) { .win b { display: none; } .floors { gap: 7cqi 6cqi; } }   /* toà nhỏ: bỏ số phòng */
 .win.on i { background: linear-gradient(oklch(90% 0.08 88), oklch(80% 0.13 72)); border-color: oklch(90% 0.09 85);
-            box-shadow: 0 0 1.25rem oklch(82% 0.13 78 / 0.45); }
+            box-shadow: 0 0 clamp(0.5rem, 5.4cqi, 1.25rem) oklch(82% 0.13 78 / 0.45); }
 .win.on i::after { background: oklch(72% 0.09 70); }
 .win.on b { color: oklch(84% 0.05 85); }
-.gate { display: flex; justify-content: center; height: 2.5rem; background: oklch(27% 0.025 285);
+.gate { display: flex; justify-content: center; height: 11cqi; background: oklch(27% 0.025 285);
         border-inline: 1px solid oklch(34% 0.025 285); }
-.gate span { width: 3.25rem; border-radius: 3px 3px 0 0; background: oklch(18% 0.03 280);
+.gate span { width: 14cqi; border-radius: 3px 3px 0 0; background: oklch(18% 0.03 280);
              box-shadow: inset 0 3px 0 #DC493A; }
-.street { position: relative; z-index: 1; width: 100%; height: 3.5rem; background: oklch(20% 0.03 280); border-top: 1px solid oklch(38% 0.03 280); }
+.street { position: relative; z-index: 1; width: 100%; height: var(--street); flex: none;
+          background: oklch(20% 0.03 280); border-top: 1px solid oklch(38% 0.03 280); }
 
 /* Đèn bật dần: chỉ một lần khi mở trang; giảm chuyển động → đèn sáng sẵn (trạng thái gốc là "on") */
 @keyframes lightOn { from { background: oklch(20% 0.03 280); border-color: oklch(36% 0.025 285); box-shadow: none; } }
