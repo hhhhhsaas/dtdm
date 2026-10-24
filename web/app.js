@@ -452,7 +452,7 @@ const markFilter = (id, key, cur) => {
    ====================================================================== */
 VIEWS.home = async (v) => {
   const period = curPeriod();
-  const [dash, rooms, inv, overdue, expiring, incidents, readings, occupied, periodInv] = await Promise.all([
+  const [dash, rooms, inv, overdue, expiring, incidents, readings, occupied, periodInv, allContracts] = await Promise.all([
     api("GET", "/api/v1/reports/dashboard"),
     api("GET", "/api/v1/rooms/stats"),
     api("GET", "/api/v1/invoices/stats"),
@@ -462,6 +462,7 @@ VIEWS.home = async (v) => {
     api("GET", "/api/v1/meter-readings?" + qs({ period, utility_type: "ELECTRIC", page_size: 100 })),
     api("GET", "/api/v1/rooms?" + qs({ status: "OCCUPIED", page_size: 100 })),
     api("GET", "/api/v1/invoices?" + qs({ period, page_size: 1 })),
+    api("GET", "/api/v1/contracts?page_size=100"),
   ]);
   /* ⭐ API lỗi KHÔNG được coi là "danh sách rỗng": nếu API hóa đơn quá hạn
      chết mà vẫn hiện "Mọi việc đã xong" thì chủ trọ yên tâm sai. Ghi nhận
@@ -490,6 +491,25 @@ VIEWS.home = async (v) => {
     od.slice(0, 3).map((x) => `${x.tenant_name} (${x.room_number || "—"})`).join(", "), "invoices:OVERDUE", "Xem"]);
   if (inc.length) todos.push([true, "wrench", `${inc.length} sự cố chưa xử lý xong`,
     inc.slice(0, 3).map((x) => x.title).join(" · "), "incidents", "Xử lý"]);
+  /* ⭐ Hết hạn mà phòng chưa có hợp đồng mới: người thuê thường VẪN Ở. Không dựa
+     vào trạng thái phòng được — room-service đã tự trả phòng về "Còn trống" khi
+     nhận contract.expired, nên sơ đồ có thể đang báo trống sai. */
+  if (allContracts.ok) {
+    const all = items(allContracts);
+    const liveRooms = new Set(all.filter((c) => ["ACTIVE", "PENDING_SIGN", "DRAFT"].includes(c.status)).map((c) => c.room_id));
+    const since = addMonths(today(), -3);
+    const latest = {};
+    all.filter((c) => c.status === "EXPIRED" && !liveRooms.has(c.room_id) && c.end_date >= since)
+      .forEach((c) => { if (!latest[c.room_id] || c.end_date > latest[c.room_id].end_date) latest[c.room_id] = c; });
+    const lapsed = Object.values(latest);
+    if (lapsed.length) {
+      const rm = await roomMap().catch(() => ({}));
+      todos.push([true, "file", `${lapsed.length} hợp đồng đã hết hạn, chưa ký lại`,
+        lapsed.slice(0, 3).map((c) => `${c.primary_tenant_name} (${(rm[c.room_id] || {}).room_number || "—"}) · hết ${fmtDate(c.end_date)}`).join(", ") +
+          " — phòng có thể đang hiện “Còn trống” dù người thuê vẫn ở",
+        "contracts:EXPIRED", "Gia hạn"]);
+    }
+  }
   if (ex.length) todos.push([false, "cal", `${ex.length} hợp đồng hết hạn trong 30 ngày tới`,
     ex.slice(0, 3).map((x) => `${x.primary_tenant_name} · còn ${x.days_remaining} ngày`).join(", "), "contracts:expiring", "Xem"]);
 
@@ -911,10 +931,10 @@ function invoiceLines(inv) {
 VIEWS.contracts = async (v) => {
   const pid = await propertyId();
   const arg = state.arg; state.arg = null;
-  let mode = arg === "expiring" ? "expiring" : "ACTIVE";
+  let mode = arg === "expiring" ? "expiring" : arg === "EXPIRED" ? "EXPIRED" : "ACTIVE";
   v.innerHTML = head("Hợp đồng", "Soạn, kích hoạt và theo dõi thời hạn hợp đồng thuê",
       `<button class="btn" id="new">${ico("plus", "sm")}Tạo hợp đồng</button>`) + `
-    <div class="card"><div class="toolbar">${filterBar("seg", "m", [["ACTIVE", "Đang hiệu lực"], ["expiring", "Sắp hết hạn"], ["draft", "Đang soạn"], ["", "Tất cả"]], mode)}</div>
+    <div class="card"><div class="toolbar">${filterBar("seg", "m", [["ACTIVE", "Đang hiệu lực"], ["expiring", "Sắp hết hạn"], ["EXPIRED", "Đã hết hạn"], ["draft", "Đang soạn"], ["", "Tất cả"]], mode)}</div>
     <div class="tbl-wrap" id="tbl">${skeleton()}</div></div>`;
   const load = async () => {
     markFilter("seg", "m", mode);
@@ -1311,11 +1331,15 @@ VIEWS.room = async (v) => {
     const start = new Date(contract.start_date), end = new Date(contract.end_date);
     const pct = Math.min(100, Math.max(0, ((Date.now() - start) / (end - start)) * 100));
     const left = contract.days_remaining;
+    const expired = contract.status === "EXPIRED";
     contractHtml = `<div class="card-b">
       ${contract.status === "PENDING_SIGN" ? `<div class="note">${ico("file")}<div>Hợp đồng đang <b>chờ bạn ký</b>. Liên hệ chủ trọ để hoàn tất.</div></div>` : ""}
-      <div class="contract-left"><span class="num ${left !== null && left <= 30 ? "warn-t" : ""}">${left ?? "—"}</span> ngày còn lại</div>
+      ${expired ? `<div class="note alarm">${ico("alert")}<div><b>Hợp đồng đã hết hạn ngày ${fmtDate(contract.end_date)}.</b>
+          Liên hệ chủ trọ để gia hạn hoặc thỏa thuận ngày trả phòng và hoàn cọc.</div></div>
+        <div class="meter-key"><span>Thời hạn cũ</span><span class="num">${fmtDate(contract.start_date)} – ${fmtDate(contract.end_date)}</span></div>`
+      : `<div class="contract-left"><span class="num ${left !== null && left <= 30 ? "warn-t" : ""}">${left ?? "—"}</span> ngày còn lại</div>
       <div class="meter" role="img" aria-label="Đã ở ${pct.toFixed(0)}% thời hạn hợp đồng"><i class="m-ok" style="width:${pct.toFixed(1)}%"></i></div>
-      <div class="meter-key"><span class="num">${fmtDate(contract.start_date)}</span><span class="num">${fmtDate(contract.end_date)}</span></div>
+      <div class="meter-key"><span class="num">${fmtDate(contract.start_date)}</span><span class="num">${fmtDate(contract.end_date)}</span></div>`}
       <dl class="kv compact">
         <dt>Mã hợp đồng</dt><dd class="num">${esc(contract.contract_no)}</dd>
         <dt>Giá thuê</dt><dd>${money(contract.monthly_price)} / tháng</dd>

@@ -437,7 +437,8 @@ async def list_my_contracts(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[ContractResponse]:
     """
-    Hợp đồng đang hiệu lực / đang chờ ký của người thuê đang đăng nhập.
+    Hợp đồng đang hiệu lực / đang chờ ký của người thuê đang đăng nhập; nếu không
+    có thì hợp đồng đã hết hạn gần nhất.
 
     ⭐ Lọc theo claim `tenant_id` trong JWT — giống `/invoices/mine`, KHÔNG nhận
        tenant_id từ query (đổi tham số là xem được hợp đồng người khác).
@@ -455,6 +456,18 @@ async def list_my_contracts(
         )
         .order_by(Contract.start_date.desc())
     )).scalars().all()
+    if not rows:
+        # ⭐ Hết hạn mà chưa ký lại là chuyện thường ở nhà trọ: người thuê vẫn ở,
+        #    vẫn cần biết tiền cọc, giá thuê, ngày hết hạn để tính chuyện gia hạn
+        #    hay trả phòng. Trả hợp đồng EXPIRED gần nhất thay vì danh sách rỗng.
+        rows = (await session.execute(
+            select(Contract)
+            .options(selectinload(Contract.roommates))
+            .where(Contract.primary_tenant_id == user.tenant_id,
+                   Contract.status == ContractStatus.EXPIRED.value)
+            .order_by(Contract.end_date.desc())
+            .limit(1)
+        )).scalars().all()
     return [await _load_response(session, c) for c in rows]
 
 
