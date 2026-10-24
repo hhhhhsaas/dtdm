@@ -97,8 +97,6 @@ tô màu chứa icon, không icon trang trí ở trạng thái trống.
 | C · Vạch chân trượt | "Tôi vừa chuyển từ đâu sang đâu?" | Một vạch `primary` 2px trượt (translateX + scaleX) 250ms giữa tab / mục lọc |
 
 Kèm: nút lún 1px khi bấm (100ms). Đổi màu hover 120ms.
-Ngoại lệ duy nhất ngoài app: trang đăng nhập có mặt tiền dãy trọ lúc chạng vạng, đèn các phòng bật dần
-một lần (~1,5s) khi mở trang. Tranh có màu cố định ở cả hai theme; giảm chuyển động → đèn sáng sẵn.
 - Easing `--ease-out: cubic-bezier(0.2, 0, 0, 1)`. Chỉ transform/opacity (riêng B đổi màu nền một lần).
 - Không: thẻ nhấc lên khi hover, fade-up khi cuộn, skeleton nhấp nháy, chuyển trang trượt, lặp vô hạn.
 - `prefers-reduced-motion`: tắt mọi transition/animation, số hiện ngay giá trị cuối.

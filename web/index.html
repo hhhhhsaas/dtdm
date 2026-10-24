@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#15131c" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/svg+xml" href="/brand/mark.svg?v=1">
 <link rel="preload" href="/fonts/be-vietnam-pro-vietnamese-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/app.css?v=20261025b">
+<link rel="stylesheet" href="/app.css?v=20261025c">
 </head>
 <body>
 
@@ -43,13 +43,10 @@
 <!-- ============================ ĐĂNG NHẬP ============================ -->
 <div id="login-wrap" class="hidden">
   <main class="login">
-    <section class="login-side">
-      <div class="login-brand">
-        <img class="brand-light" src="/brand/wordmark.svg?v=1" alt="EZ-Rent" width="125" height="22">
-        <img class="brand-dark" src="/brand/wordmark-dark.svg?v=1" alt="EZ-Rent" width="125" height="22"></div>
-      <div class="login-form">
+    <div class="card">
+      <img class="login-logo brand-light" src="/brand/logo.svg?v=1" alt="EZ-Rent" width="104" height="96">
+      <img class="login-logo brand-dark" src="/brand/logo-dark.svg?v=1" alt="EZ-Rent" width="104" height="96">
       <h1>Đăng nhập</h1>
-      <p class="login-lede">Dùng tài khoản chủ trọ đã cấp cho bạn.</p>
       <form id="login-form" autocomplete="on">
         <div class="field"><label for="u">Tên đăng nhập</label>
           <input id="u" name="username" autocomplete="username" required></div>
@@ -64,34 +61,7 @@
         <button type="button" class="linkish" data-user="quanly">quanly (quản lý)</button>
         <button type="button" class="linkish" data-user="khach01">khach01 (người thuê)</button>
       </div>
-      </div>
       <p class="login-foot">Quên mật khẩu? Liên hệ chủ trọ để được cấp lại.</p>
-    </section>
-    <!-- Mặt tiền dãy trọ lúc chạng vạng: phòng sáng đèn là phòng có người ở. Chỉ để trang trí. -->
-    <div class="dusk" aria-hidden="true">
-      <div class="facade">
-        <svg class="roof" viewBox="0 0 240 44" preserveAspectRatio="none"><path d="M6 42 120 6l114 36"/></svg>
-        <div class="floors">
-          <span class="win on d6"><i></i><b>A401</b></span>
-          <span class="win"><i></i><b>A402</b></span>
-          <span class="win on d3 flk"><i></i><b>A403</b></span>
-          <span class="win"><i></i><b>A404</b></span>
-          <span class="win"><i></i><b>A301</b></span>
-          <span class="win on d1"><i></i><b>A302</b></span>
-          <span class="win on d7"><i></i><b>A303</b></span>
-          <span class="win on d4"><i></i><b>A304</b></span>
-          <span class="win on d5"><i></i><b>A201</b></span>
-          <span class="win"><i></i><b>A202</b></span>
-          <span class="win"><i></i><b>A203</b></span>
-          <span class="win on d2 flk"><i></i><b>A204</b></span>
-          <span class="win"><i></i><b>A101</b></span>
-          <span class="win on d8"><i></i><b>A102</b></span>
-          <span class="win on d1"><i></i><b>A103</b></span>
-          <span class="win"><i></i><b>A104</b></span>
-        </div>
-        <div class="gate"><span></span></div>
-      </div>
-      <div class="street"></div>
     </div>
   </main>
 </div>
@@ -109,6 +79,6 @@
 </div>
 <div id="toasts" role="status" aria-live="polite"></div>
 
-<script src="/app.js?v=20261025b" defer></script>
+<script src="/app.js?v=20261025c" defer></script>
 </body>
 </html>
