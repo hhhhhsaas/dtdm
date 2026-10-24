@@ -304,6 +304,19 @@ DEFAULT_TEMPLATES: list[dict[str, Any]] = [
         "description": "Báo ngay cho quản lý (event incident.urgent / incident.escalated).",
     },
     {
+        "code": "INCIDENT_RESOLVED",
+        "channel": Channel.IN_APP.value,
+        "name": "Sự cố của bạn đã được xử lý",
+        "subject": "Sự cố {{ ticket_no }} đã được xử lý xong",
+        "body": (
+            "Sự cố \"{{ title }}\" tại phòng {{ room_number }} đã được xử lý xong.\n"
+            "{% if resolution %}Ghi chú: {{ resolution }}\n{% endif %}"
+            "\nNếu vẫn còn vấn đề, bạn báo lại trong mục Sự cố. Bạn có thể đánh giá "
+            "việc xử lý ngay trong phiếu.\n"
+        ),
+        "description": "Gửi cho người thuê đã báo sự cố khi phiếu được xử lý xong (event incident.resolved).",
+    },
+    {
         "code": "ROOM_STATUS_CHANGED",
         "channel": Channel.IN_APP.value,
         "name": "Phòng đổi trạng thái",
@@ -350,8 +363,17 @@ SUBSCRIBED_EVENTS: list[str] = [
     "incident.created",
     "incident.escalated",
     "incident.urgent",
+    "incident.resolved",
     "room.status_changed",
 ]
+
+#: Khuôn mẫu VIẾT CHO NGƯỜI THUÊ — chỉ những thư này hiện trong hộp thư /mine.
+#: ⭐ Nhiều thư cho quản lý cũng mang tenant_id (để liên kết hồ sơ), ví dụ
+#:    PAYMENT_RECEIVED "người thuê X vừa trả…" hay CONTRACT_EXPIRED "nhớ kiểm tra
+#:    tiền cọc". Lọc theo tenant_id thôi thì người thuê đọc được thư nội bộ.
+TENANT_FACING_TEMPLATES: frozenset[str] = frozenset({
+    "INVOICE_ISSUED", "INVOICE_OVERDUE", "CONTRACT_EXPIRING", "INCIDENT_RESOLVED",
+})
 
 
 # =================================================================================================
@@ -1007,7 +1029,8 @@ async def list_my_notifications(
     limit: int = Query(30, ge=1, le=100),
 ) -> list[NotificationResponse]:
     """
-    Hộp thư trong app của người thuê đang đăng nhập (kênh IN_APP), mới nhất trước.
+    Hộp thư của người thuê đang đăng nhập — chỉ thư viết cho người thuê
+    (`TENANT_FACING_TEMPLATES`), mọi kênh, mới nhất trước.
 
     ⭐ Trước đây cố ý chưa có API này: db_notify không biết tài khoản nào ứng với
        hồ sơ người thuê nào. Nay JWT mang claim `tenant_id` (auth-service lấy từ
@@ -1020,7 +1043,7 @@ async def list_my_notifications(
     rows = (await session.execute(
         select(Notification)
         .where(Notification.tenant_id == user.tenant_id,
-               Notification.channel == Channel.IN_APP.value)
+               Notification.template_code.in_(TENANT_FACING_TEMPLATES))
         .order_by(Notification.queued_at.desc())
         .limit(limit)
     )).scalars().all()
@@ -1036,7 +1059,8 @@ async def mark_my_read(
 ) -> NotificationResponse:
     notification = await _get_notification_or_404(session, notification_id)
     # Thư của người khác → 404 (không phải 403): không xác nhận là id đó có tồn tại.
-    if user.tenant_id is None or notification.tenant_id != user.tenant_id:
+    if (user.tenant_id is None or notification.tenant_id != user.tenant_id
+            or notification.template_code not in TENANT_FACING_TEMPLATES):
         raise NotFoundError("Không tìm thấy thông báo")
     if notification.read_at is None:
         notification.read_at = datetime.now(UTC)
@@ -1343,6 +1367,7 @@ async def _handle_event(event: DomainEvent) -> None:
         "incident.created": _on_incident_created,
         "incident.urgent": _on_incident_urgent,
         "incident.escalated": _on_incident_urgent,
+        "incident.resolved": _on_incident_resolved,
         "room.status_changed": _on_room_status_changed,
     }.get(event.event_type)
 
@@ -1575,6 +1600,33 @@ async def _on_incident_urgent(session: AsyncSession, event: DomainEvent) -> None
         tenant_id=_uuid_or_none(data.get("tenant_id")),
         priority=Priority.CRITICAL.value,
         dedupe_key=f"{event.event_type.upper()}:{ticket_no}",
+    )
+
+
+async def _on_incident_resolved(session: AsyncSession, event: DomainEvent) -> None:
+    """Phiếu sự cố xử lý xong → báo người thuê đã báo phiếu đó (nếu người báo là người thuê)."""
+    data = event.data
+    tenant_id = _uuid_or_none(data.get("tenant_id"))
+    if tenant_id is None:
+        return          # quản lý tự ghi phiếu / bảo trì định kỳ — không có người thuê để báo
+    # Bỏ các dòng nội bộ ("[Đã kiểm tra an toàn] admin (uuid)", "[Giao việc] …"):
+    # người thuê chỉ cần biết kết quả, không cần id tài khoản nhân viên.
+    resolution = "\n".join(line for line in str(data.get("resolution") or "").splitlines()
+                           if line.strip() and not line.lstrip().startswith("["))
+    ticket_no = str(data.get("ticket_no") or "")
+    await _enqueue(
+        session,
+        template_code="INCIDENT_RESOLVED",
+        context={
+            "ticket_no": ticket_no,
+            "title": data.get("title") or "",
+            "room_number": data.get("room_number") or "—",
+            "resolution": resolution,
+        },
+        property_id=_uuid_or_none(data.get("property_id")),
+        tenant_id=tenant_id,
+        priority=Priority.NORMAL.value,
+        dedupe_key=f"INCIDENT_RESOLVED:{ticket_no}",
     )
 
 

@@ -1142,6 +1142,9 @@ async def resolve_incident(
             "resolution": incident.resolution[:500],
             "cost": str(incident.cost) if incident.cost is not None else None,
             "resolution_hours": incident.resolution_hours,
+            # Người báo (nếu là người thuê) → notification gửi "đã xử lý xong" cho họ
+            "tenant_id": str(incident.reported_by_tenant_id) if incident.reported_by_tenant_id else None,
+            "reported_by": incident.reported_by_name,
         },
     )
     record_business_event(settings.service_name, "incident.resolved")
