@@ -310,6 +310,8 @@ input[type="number"], .meter-in { font-family: var(--font-num); }
 .inv-sum .meter { margin-top: var(--space-3); }
 .meter-key .ic { vertical-align: -0.15em; }
 .meter-key .ok-t b { color: var(--color-ok); }
+.meter-key .cash-in { margin-left: auto; }
+@media (max-width: 720px) { .meter-key .cash-in { margin-left: 0; } }
 .hero-fig .of { margin-bottom: var(--space-4); }
 .meter i { display: block; height: 100%; }
 .meter .m-ok { background: var(--color-primary); }

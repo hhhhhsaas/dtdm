@@ -327,6 +327,29 @@ function go(tab) {
   });
 }
 
+/* Thẻ "đã thu / tổng đã lập" — dùng chung cho Hôm nay và Sổ thu tiền để hai nơi
+   luôn cùng nguồn (billing) và cùng cách tính. stats = GET /invoices/stats.
+   overdueAmt: tiền quá hạn trong cùng phạm vi (vẽ đoạn đỏ trên thanh), có thể bỏ. */
+function collectBlock(stats, label, { overdueAmt = 0, who = "hóa đơn", extra = "" } = {}) {
+  const s = stats || {};
+  const billed = num(s.total_billed);
+  const pctOf = (x) => billed ? Math.min(100, (num(x) / billed) * 100).toFixed(1) + "%" : "0%";
+  const unpaid = (s.pending ?? 0) + (s.overdue ?? 0);
+  return `
+    <div class="label">${ico("receipt")}${label} · ${s.total_invoices ?? 0} hóa đơn đã lập</div>
+    <div class="collect">
+      <div><div class="collect-fig"><span class="big">${fmtMoney(s.total_collected)}</span><span class="of-total">/ ${fmtMoney(s.total_billed)}</span></div>
+        <div class="cap">Đã thu / tổng đã lập</div></div>
+      <div class="collect-owe"><span class="owe">${fmtMoney(s.total_outstanding)}</span><div class="cap">Còn phải thu</div></div>
+    </div>
+    <div class="meter" role="img" aria-label="Đã thu ${pctOf(s.total_collected)} tổng đã lập${overdueAmt ? `, quá hạn ${pctOf(overdueAmt)}` : ""}">
+      <i class="m-ok" style="width:${pctOf(s.total_collected)}"></i>${overdueAmt ? `<i class="m-due" style="width:${pctOf(overdueAmt)}"></i>` : ""}</div>
+    <div class="meter-key">
+      <span class="ok-t">${ico("check", "sm")} <b>${s.paid ?? 0}</b> ${who} đã trả đủ</span>
+      <span>${ico("alert", "sm")} <b>${unpaid}</b> ${who} chưa trả${s.overdue ? ` <span class="due">(${s.overdue} quá hạn${overdueAmt ? " · " + fmtMoney(overdueAmt) : ""})</span>` : ""}</span>
+      ${extra}</div>`;
+}
+
 const head = (title, lead, actions = "") =>
   `<div class="page-head"><div><h1>${title}</h1>${lead ? `<div class="lead">${lead}</div>` : ""}</div>
    ${actions ? `<div class="actions">${actions}</div>` : ""}</div>`;
@@ -346,7 +369,7 @@ const markFilter = (id, key, cur) => $$(`#${id} button`).forEach((x) => x.setAtt
    ====================================================================== */
 VIEWS.home = async (v) => {
   const period = curPeriod();
-  const [dash, rooms, inv, overdue, expiring, incidents, readings, occupied, periodInv] = await Promise.all([
+  const [dash, rooms, inv, overdue, expiring, incidents, readings, occupied, periodInv, pinv] = await Promise.all([
     api("GET", "/api/v1/reports/dashboard"),
     api("GET", "/api/v1/rooms/stats"),
     api("GET", "/api/v1/invoices/stats"),
@@ -356,13 +379,15 @@ VIEWS.home = async (v) => {
     api("GET", "/api/v1/meter-readings?" + qs({ period, utility_type: "ELECTRIC", page_size: 100 })),
     api("GET", "/api/v1/rooms?" + qs({ status: "OCCUPIED", page_size: 100 })),
     api("GET", "/api/v1/invoices?" + qs({ period, page_size: 1 })),
+    api("GET", "/api/v1/invoices/stats?" + qs({ period })),
   ]);
   /* ⭐ API lỗi KHÔNG được coi là "danh sách rỗng": nếu API hóa đơn quá hạn
      chết mà vẫn hiện "Mọi việc đã xong" thì chủ trọ yên tâm sai. Ghi nhận
      nguồn nào lỗi, hiện cảnh báo, và không kết luận gì từ nguồn đó. */
   const failed = [[dash, "báo cáo doanh thu"], [rooms, "thống kê phòng"], [inv, "thống kê hóa đơn"],
     [overdue, "hóa đơn quá hạn"], [expiring, "hợp đồng sắp hết hạn"], [incidents, "sự cố"],
-    [readings, "chỉ số điện nước"], [occupied, "danh sách phòng"], [periodInv, "hóa đơn kỳ này"]]
+    [readings, "chỉ số điện nước"], [occupied, "danh sách phòng"], [periodInv, "hóa đơn kỳ này"],
+    [pinv, "thống kê kỳ này"]]
     .filter(([res]) => !res.ok).map(([, name]) => name);
   const kpi = (dash.data && dash.data.kpi) || {};
   const r = rooms.ok ? rooms.data || {} : {}, s = inv.ok ? inv.data || {} : {};
@@ -392,11 +417,13 @@ VIEWS.home = async (v) => {
   const total7 = pts.reduce((a, p) => a + num(p.collected), 0);
   const max7 = Math.max(...pts.map((p) => num(p.collected)), 1);
 
-  /* Thẻ chính: tiền tháng này + thanh tiến độ (đã thu · quá hạn · chưa đến hạn).
-     Nguồn nào lỗi thì để "—", không đoán. */
-  const billed = num(s.total_billed), collected = num(s.total_collected);
-  const notDue = Math.max(num(s.total_outstanding) - odSum, 0);
-  const pct = (x) => billed ? Math.min(100, (x / billed) * 100).toFixed(1) + "%" : "0%";
+  /* Thẻ chính: hóa đơn KỲ THÁNG NÀY, nguồn billing (khớp trang Sổ thu tiền khi lọc cùng kỳ).
+     Số "tiền nhận trong tháng" của report-service (read model CQRS, tính theo ngày nhận
+     tiền, gồm cả tiền trả cho kỳ cũ) là thước đo KHÁC — để thành dòng phụ có nhãn riêng,
+     không trộn vào cùng câu với tổng đã lập. */
+  const odPeriod = od.filter((x) => String(x.period || "").slice(0, 7) === period.slice(0, 7))
+    .reduce((a, x) => a + num(x.total_amount) - num(x.paid_amount), 0);
+  const cashLine = dash.ok ? `<span class="cash-in">${ico("cash", "sm")} Tiền nhận trong tháng (theo ngày nhận, từ báo cáo): <b>${fmtMoney(kpi.revenue_month)}</b></span>` : "";
   const urgent = inc.filter((x) => x.priority === "URGENT").length;
 
   v.innerHTML = head("Hôm nay",
@@ -404,19 +431,12 @@ VIEWS.home = async (v) => {
     ${failed.length ? `<div class="note alarm">${ico("alert")}<div><b>Chưa tải được: ${esc(failed.join(", "))}.</b>
       Số liệu liên quan đang để “—” và danh sách việc có thể chưa đủ. Tải lại trang sau ít phút.</div></div>` : ""}
     <div class="overview">
-      <section class="card hero-fig" aria-label="Tiền tháng này">
-        <div class="label">${ico("cash")}${fmtPeriod(period)} đã thu</div>
-        <div class="big">${dash.ok ? fmtMoney(kpi.revenue_month) : "—"}</div>
-        <div class="of">${inv.ok ? `trên tổng <span class="num">${fmtMoney(billed)}</span> đã lập · thu được ${s.collection_rate ?? 0}%` : "chưa rõ tổng đã lập"}</div>
-        ${inv.ok ? `<div class="meter" role="img" aria-label="Đã thu ${pct(collected)}, quá hạn ${pct(odSum)}">
-            <i class="m-ok" style="width:${pct(collected)}"></i><i class="m-due" style="width:${pct(odSum)}"></i></div>
-          <div class="meter-key">
-            <span><i class="sw m-ok"></i>Đã thu <b>${fmtMoney(collected)}</b></span>
-            <span><i class="sw m-due"></i>Quá hạn <b class="due">${fmtMoney(odSum)}</b></span>
-            <span>Chưa đến hạn <b>${fmtMoney(notDue)}</b></span></div>` : ""}
+      <section class="card hero-fig inv-sum" aria-label="Hóa đơn kỳ này">
+        ${pinv.ok ? collectBlock(pinv.data, "Kỳ " + fmtPeriod(period).toLowerCase(), { overdueAmt: odPeriod, who: "người thuê", extra: cashLine })
+          : `<div class="label">${ico("receipt")}Kỳ ${fmtPeriod(period).toLowerCase()}</div><div class="big">—</div>${cashLine}`}
       </section>
       <div class="stats">
-        <section class="card stat"><div class="label">${ico("receipt", "sm")}Còn phải thu</div>
+        <section class="card stat"><div class="label">${ico("receipt", "sm")}Tổng nợ mọi kỳ</div>
           <div class="v warn-t">${inv.ok ? fmtMoney(s.total_outstanding) : "—"}</div>
           <div class="s">${inv.ok ? `${s.pending ?? 0} chờ trả · ${s.overdue ?? 0} quá hạn` : ""}</div></section>
         <section class="card stat"><div class="label">${ico("door", "sm")}Phòng có người</div>
@@ -658,23 +678,9 @@ VIEWS.invoices = async (v) => {
     ]);
     if (!res.ok) throw new Error(apiErr(res));
     const s = stats.data || {};
-    const billed = num(s.total_billed), pctOf = (x) => billed ? Math.min(100, (num(x) / billed) * 100).toFixed(1) + "%" : "0%";
     /* Đếm theo hóa đơn: lọc một kỳ thì mỗi người thuê một hóa đơn → gọi là
        "người thuê"; xem mọi kỳ thì một người có nhiều hóa đơn → gọi "hóa đơn". */
-    const who = period ? "người thuê" : "hóa đơn";
-    const unpaid = (s.pending ?? 0) + (s.overdue ?? 0);
-    $("#sum").innerHTML = `
-      <div class="label">${ico("receipt")}${period ? fmtPeriod(period) : "Mọi kỳ"} · ${s.total_invoices ?? 0} hóa đơn đã lập</div>
-      <div class="collect">
-        <div><div class="collect-fig"><span class="big">${fmtMoney(s.total_collected)}</span><span class="of-total">/ ${fmtMoney(s.total_billed)}</span></div>
-          <div class="cap">Đã thu / tổng đã lập</div></div>
-        <div class="collect-owe"><span class="owe">${fmtMoney(s.total_outstanding)}</span><div class="cap">Còn phải thu</div></div>
-      </div>
-      <div class="meter" role="img" aria-label="Đã thu ${pctOf(s.total_collected)} tổng đã lập">
-        <i class="m-ok" style="width:${pctOf(s.total_collected)}"></i></div>
-      <div class="meter-key">
-        <span class="ok-t">${ico("check", "sm")} <b>${s.paid ?? 0}</b> ${who} đã trả đủ</span>
-        <span>${ico("alert", "sm")} <b>${unpaid}</b> ${who} chưa trả${s.overdue ? ` <span class="due">(${s.overdue} quá hạn)</span>` : ""}</span></div>`;
+    $("#sum").innerHTML = collectBlock(s, period ? fmtPeriod(period) : "Mọi kỳ", { who: period ? "người thuê" : "hóa đơn" });
     const list = items(res);
     const owe = (i) => num(i.total_amount) - num(i.paid_amount);
     $("#tbl").innerHTML = list.length ? `<table>
