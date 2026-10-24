@@ -198,6 +198,23 @@ a { color: var(--color-primary-strong); text-underline-offset: 3px; }
 /* B · dòng vừa thay đổi lóe lên rồi nhạt dần */
 @keyframes flash { from { background-color: var(--color-select); } }
 tr.flash td, .list .flash { animation: flash 900ms var(--ease-out); }
+/* D · Hộp thoại mở ra từ chỗ bấm: nền mờ hiện dần, khung phóng nhẹ 97% → 100%. Đóng thì ngược lại, nhanh hơn */
+@keyframes popIn { from { opacity: 0; transform: translateY(6px) scale(0.97); } }
+@keyframes popOut { to { opacity: 0; transform: translateY(4px) scale(0.98); } }
+.modal-bg { animation: fadeIn 160ms var(--ease-out); }
+.modal-bg .modal { animation: popIn 200ms var(--ease-out); }
+.modal-bg.closing { animation: fadeOut 140ms var(--ease-out) forwards; }
+.modal-bg.closing .modal { animation: popOut 140ms var(--ease-out) forwards; }
+/* E · Thông báo trượt lên từ góc rồi mờ đi */
+@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } }
+@keyframes fadeOut { to { opacity: 0; } }
+.toast { animation: toastIn 220ms var(--ease-out); }
+.toast.leaving { animation: fadeOut 200ms var(--ease-out) forwards; }
+/* F · Số đếm trên tab / bộ lọc nảy một nhịp khi giá trị đổi ("vừa có thêm việc") */
+@keyframes bump { 40% { transform: scale(1.25); } }
+.count.bump { animation: bump 320ms var(--ease-out); }
+/* G · Màn vừa tải xong hiện dần thay cho khung xương (chỉ mờ → rõ, không trượt) */
+.view-in { animation: fadeIn 180ms var(--ease-out); }
 .ic { width: 1.125rem; height: 1.125rem; flex: none; fill: none; stroke: currentColor;
       stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: -0.2em; }
 .ic.sm { width: 0.95rem; height: 0.95rem; }

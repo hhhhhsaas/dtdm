@@ -86,7 +86,16 @@ function toast(msg, type = "ok") {
   el.className = "toast " + (type === "err" ? "err" : "");
   el.textContent = msg;
   $("#toasts").appendChild(el);
-  setTimeout(() => el.remove(), type === "err" ? 6000 : 3500);
+  setTimeout(() => leave(el, "leaving"), type === "err" ? 6000 : 3500);
+}
+/* Gỡ phần tử sau khi chạy xong hiệu ứng rời đi; giảm chuyển động → gỡ ngay.
+   Có hẹn giờ dự phòng phòng khi animationend không bắn (tab bị ẩn…). */
+function leave(el, cls, done) {
+  const finish = () => { if (el.isConnected) { el.remove(); if (done) done(); } };
+  if (reduceMotion()) return finish();
+  el.classList.add(cls);
+  el.addEventListener("animationend", finish, { once: true });
+  setTimeout(finish, 400);
 }
 
 /* ------------------------------ API core ------------------------------ */
@@ -192,8 +201,8 @@ function modal({ title, body, submit, onSubmit, wide = false, danger = false, ca
   const opener = document.activeElement;
   const onKey = (e) => { if (e.key === "Escape") close(); };
   const close = () => {
-    bg.remove();
     document.removeEventListener("keydown", onKey);
+    leave(bg, "closing");
     if (opener && opener.isConnected) opener.focus();
   };
   document.addEventListener("keydown", onKey);
@@ -326,12 +335,22 @@ function renderNav() {
 function setBadge(tab, n) {
   const b = $(`[data-badge="${tab}"]`);
   if (!b) return;
-  b.textContent = n;
+  bump(b, n);
   b.classList.toggle("hidden", !n);
+}
+/* F · đổi số đếm và cho nó nảy một nhịp — chỉ khi số thật sự đổi, không nảy lần đầu hiện */
+function bump(el, n) {
+  const before = el.textContent;
+  el.textContent = n;
+  if (before === "" || before === String(n) || reduceMotion()) return;
+  el.classList.remove("bump");
+  void el.offsetWidth;
+  el.classList.add("bump");
 }
 
 /* ------------------------------------------------------------------------
-   Chuyển động — đúng 3 loại, mỗi loại trả lời một câu hỏi của người dùng
+   Chuyển động — A–C cho dữ liệu (dưới đây), D–G đáp lại thao tác (hộp thoại,
+   toast, số đếm, màn mới — xem leave/bump/go). Mỗi loại trả lời một câu hỏi của người dùng
    (design.md § Motion). Chỉ transform/opacity (+ một lần đổi màu nền), tắt
    hết khi hệ điều hành bật "giảm chuyển động".
    ------------------------------------------------------------------------ */
@@ -408,7 +427,11 @@ function go(tab) {
   const v = $("#view");
   v.innerHTML = skeleton();
   window.scrollTo(0, 0);
-  VIEWS[tab](v).then(() => afterRender(v)).catch((err) => {
+  v.classList.remove("view-in");
+  VIEWS[tab](v).then(() => {
+    if (state.tab === tab) { void v.offsetWidth; v.classList.add("view-in"); }   // G · màn mới hiện dần
+    afterRender(v);
+  }).catch((err) => {
     v.innerHTML = empty("Không tải được dữ liệu", `<div>${esc(err.message)}</div>`);
   });
 }
@@ -1174,7 +1197,7 @@ VIEWS.incidents = async (v) => {
     /* Số phiếu chưa xử lý xong: hiện ở nút lọc và ở tab "Sự cố" (cùng một số) */
     const openCount = open ? list.length : list.filter((x) => x.is_open).length;
     setBadge("incidents", openCount);
-    $("#open-count").textContent = openCount;
+    bump($("#open-count"), openCount);
     $("#open-count").classList.toggle("hidden", !openCount);
     $("#tbl").innerHTML = list.length ? `<table>
       <tr><th>Sự cố</th><th>Phòng</th><th>Người báo</th><th>Mức độ</th><th>Báo lúc</th><th>Trạng thái</th></tr>
