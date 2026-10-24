@@ -23,6 +23,7 @@ const state = {
 /* ------------------------- Tiện ích hiển thị ------------------------- */
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const ico = (name, cls = "") => `<svg class="ic ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const fmtMoney = (v) => (v === null || v === undefined || v === "") ? "—" : num(v).toLocaleString("vi-VN") + " đ";
 const fmtDate = (iso) => {
@@ -57,12 +58,23 @@ const LABEL = {
   method: { CASH: "Tiền mặt", BANK_TRANSFER: "Chuyển khoản", MOMO: "MoMo", VNPAY: "VNPay", CARD: "Thẻ" },
   risk: { LOW: ["Bình thường", "g"], MEDIUM: ["Cần lưu ý", "a"], HIGH: ["Rủi ro cao", "r"] },
 };
-/* Trạng thái nói bằng chữ (design.md): chỉ nhóm "r" mang màu đỏ son, nhóm "n"
-   (hủy / hết hạn) là chữ phụ viền đứt; còn lại là chữ mực viền mảnh. */
-const TAG_CLASS = { r: "alarm", n: "quiet" };
+/* Màu trạng thái (design.md): g = ok (rêu), b = info (xanh xám), a = warn (vàng đất),
+   r = đỏ son (chỉ nợ / quá hạn / khẩn), n = hủy / hết hạn (viền đứt, không màu). */
+const TAG_CLASS = { g: "g", b: "b", a: "a", r: "alarm", n: "quiet" };
 const pill = (map, v) => { const x = map[v]; return x ? `<span class="tag ${TAG_CLASS[x[1]] || ""}">${x[0]}</span>` : `<span class="tag quiet">${esc(v || "—")}</span>`; };
 const options = (map, sel) => Object.entries(map).map(([k, v]) =>
   `<option value="${k}" ${k === sel ? "selected" : ""}>${Array.isArray(v) ? v[0] : v}</option>`).join("");
+
+/* Sáng / tối: mặc định theo hệ điều hành (CSS prefers-color-scheme); người dùng
+   chọn khác thì ghi data-theme lên <html> và nhớ trong trình duyệt. */
+const THEME_KEY = "ezrent.theme";
+const systemDark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
+const isDark = () => (document.documentElement.dataset.theme || (systemDark() ? "dark" : "light")) === "dark";
+function setTheme(t) {
+  if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+  try { t ? localStorage.setItem(THEME_KEY, t) : localStorage.removeItem(THEME_KEY); } catch (_) { /* chế độ riêng tư */ }
+}
+try { const t = localStorage.getItem(THEME_KEY); if (t === "dark" || t === "light") document.documentElement.dataset.theme = t; } catch (_) { /* bỏ qua */ }
 
 const skeleton = () => `<div class="loading">Đang tải…</div>`;
 const empty = (title, sub = "") => `<div class="empty"><b>${title}</b>${sub}</div>`;
@@ -239,12 +251,12 @@ $$(".demo [data-user]").forEach((b) => b.addEventListener("click", () => {
 /* Tab mục kiểu chia sổ. Mỗi nhóm cách nhau một khoảng trống, không có nhãn nhóm. */
 const NAV = {
   manager: [
-    [["home", "Hôm nay"], ["meters", "Điện nước"], ["invoices", "Hóa đơn"], ["incidents", "Sự cố"]],
-    [["plan", "Sơ đồ phòng"], ["contracts", "Hợp đồng"], ["tenants", "Người thuê"]],
-    [["profile", "Tài khoản"]],
+    [["home", "home", "Hôm nay"], ["meters", "gauge", "Điện nước"], ["invoices", "receipt", "Hóa đơn"], ["incidents", "wrench", "Sự cố"]],
+    [["plan", "grid", "Sơ đồ phòng"], ["contracts", "file", "Hợp đồng"], ["tenants", "users", "Người thuê"]],
+    [["profile", "user", "Tài khoản"]],
   ],
   tenant: [
-    [["my-invoices", "Hóa đơn"], ["my-incidents", "Báo sự cố"], ["profile", "Tài khoản"]],
+    [["my-invoices", "receipt", "Hóa đơn"], ["my-incidents", "wrench", "Báo sự cố"], ["profile", "user", "Tài khoản"]],
   ],
 };
 const isTenant = () => state.user && state.user.role === "TENANT";
@@ -261,14 +273,27 @@ function enterApp() {
 }
 
 function renderNav() {
-  $("#nav").innerHTML = navDef().map((list) => list.map(([id, label]) =>
-      `<button class="tab" data-tab="${id}">${label}<span class="count hidden" data-badge="${id}"></span></button>`).join("")
+  $("#nav").innerHTML = navDef().map((list) => list.map(([id, icon, label]) =>
+      `<button class="tab" data-tab="${id}">${ico(icon)}<span>${label}</span><span class="count hidden" data-badge="${id}"></span></button>`).join("")
   ).join(`<span class="tab-gap" aria-hidden="true"></span>`);
   $$("#nav .tab").forEach((b) => b.addEventListener("click", () => go(b.dataset.tab)));
   $("#home-link").addEventListener("click", (e) => { e.preventDefault(); go(allowedTabs()[0]); });
   const u = state.user;
   $("#me").innerHTML = `<b>${esc(u.full_name)}</b><span class="sub role">${LABEL.role[u.role] || u.role}</span>
+    <button class="icon-btn" id="theme" type="button"></button>
     <button class="linkish" id="logout">Đăng xuất</button>`;
+  const paintTheme = () => {
+    const dark = isDark();
+    $("#theme").innerHTML = ico(dark ? "sun" : "moon");
+    $("#theme").setAttribute("aria-label", dark ? "Chuyển sang nền sáng" : "Chuyển sang nền tối");
+    $("#theme").title = $("#theme").getAttribute("aria-label");
+  };
+  $("#theme").addEventListener("click", () => {
+    const want = isDark() ? "light" : "dark";
+    setTheme(want === (systemDark() ? "dark" : "light") ? null : want);   // trùng hệ điều hành → bỏ ghi đè
+    paintTheme();
+  });
+  paintTheme();
   $("#logout").addEventListener("click", async () => {
     await api("POST", "/api/v1/auth/logout", {}).catch(() => {});   // xoá cookie + thu hồi phiên
     clearSession();
@@ -346,56 +371,78 @@ VIEWS.home = async (v) => {
   const issued = periodInv.ok && periodInv.data && periodInv.data.meta ? periodInv.data.meta.total : 0;
   if (incidents.ok) setBadge("incidents", inc.length);
 
-  const todos = [];   // [đỏ?, tiêu đề, chi tiết, đích, nhãn nút]
+  const todos = [];   // [đỏ?, icon, tiêu đề, chi tiết, đích, nhãn nút]
   const metersKnown = readings.ok && occupied.ok;
-  if (metersKnown && missing.length) todos.push([false, `${missing.length} phòng chưa nhập chỉ số ${fmtPeriod(period).toLowerCase()}`,
+  if (metersKnown && missing.length) todos.push([false, "gauge", `${missing.length} phòng chưa nhập chỉ số ${fmtPeriod(period).toLowerCase()}`,
     missing.slice(0, 6).map((x) => x.room_number).join(", ") + (missing.length > 6 ? "…" : ""), "meters", "Nhập chỉ số"]);
-  else if (metersKnown && periodInv.ok && !issued && items(occupied).length) todos.push([false, `Chỉ số ${fmtPeriod(period).toLowerCase()} đã đủ, chưa phát hành hóa đơn`,
+  else if (metersKnown && periodInv.ok && !issued && items(occupied).length) todos.push([false, "send", `Chỉ số ${fmtPeriod(period).toLowerCase()} đã đủ, chưa phát hành hóa đơn`,
     "Phát hành một lần cho tất cả hợp đồng đang hiệu lực", "invoices", "Phát hành"]);
   const odSum = od.reduce((a, x) => a + num(x.total_amount) - num(x.paid_amount), 0);
-  if (od.length) todos.push([true, `${od.length} hóa đơn quá hạn · ${fmtMoney(odSum)}`,
+  if (od.length) todos.push([true, "alert", `${od.length} hóa đơn quá hạn · ${fmtMoney(odSum)}`,
     od.slice(0, 3).map((x) => `${x.tenant_name} (${x.room_number || "—"})`).join(", "), "invoices:OVERDUE", "Xem"]);
-  if (inc.length) todos.push([true, `${inc.length} sự cố chưa xử lý xong`,
+  if (inc.length) todos.push([true, "wrench", `${inc.length} sự cố chưa xử lý xong`,
     inc.slice(0, 3).map((x) => x.title).join(" · "), "incidents", "Xử lý"]);
-  if (ex.length) todos.push([false, `${ex.length} hợp đồng hết hạn trong 30 ngày tới`,
+  if (ex.length) todos.push([false, "cal", `${ex.length} hợp đồng hết hạn trong 30 ngày tới`,
     ex.slice(0, 3).map((x) => `${x.primary_tenant_name} · còn ${x.days_remaining} ngày`).join(", "), "contracts:expiring", "Xem"]);
 
-  /* Sổ thu: 7 ngày gần nhất, mới nhất ở trên — đọc như trang sổ thu tiền */
+  /* Sổ thu: 7 ngày gần nhất, mới nhất ở trên; thanh ngang tỉ lệ với ngày thu nhiều nhất */
   const pts = ((dash.data && dash.data.revenue_30d) || []).slice(-7).reverse();
   const total7 = pts.reduce((a, p) => a + num(p.collected), 0);
+  const max7 = Math.max(...pts.map((p) => num(p.collected)), 1);
 
-  /* KPI gói trong một câu. Nguồn nào lỗi thì nói "chưa rõ", không đoán. */
-  const n = (x) => `<span class="num">${x}</span>`;
-  const line1 = dash.ok && inv.ok
-    ? `${fmtPeriod(period)} đã thu ${n(fmtMoney(kpi.revenue_month))}, còn phải thu ${n(fmtMoney(s.total_outstanding))}` +
-      (overdue.ok && odSum > 0 ? `, trong đó <span class="due">${n(fmtMoney(odSum))} đã quá hạn</span>.` : ".")
-    : `${fmtPeriod(period)}: chưa rõ số thu.`;
-  const line2 = rooms.ok
-    ? `${n(`${r.occupied ?? 0}/${r.total ?? 0}`)} phòng đang có người${occRate !== null ? ` (${occRate}%)` : ""}` +
-      (incidents.ok ? `, ${inc.length ? `<span class="due">${inc.length} sự cố đang mở</span>` : "không có sự cố nào đang mở"}.` : ".")
-    : "";
+  /* Thẻ chính: tiền tháng này + thanh tiến độ (đã thu · quá hạn · chưa đến hạn).
+     Nguồn nào lỗi thì để "—", không đoán. */
+  const billed = num(s.total_billed), collected = num(s.total_collected);
+  const notDue = Math.max(num(s.total_outstanding) - odSum, 0);
+  const pct = (x) => billed ? Math.min(100, (x / billed) * 100).toFixed(1) + "%" : "0%";
+  const urgent = inc.filter((x) => x.priority === "URGENT").length;
 
   v.innerHTML = head("Hôm nay",
       new Date().toLocaleDateString("vi-VN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })) + `
-    ${failed.length ? `<div class="note alarm"><b>Chưa tải được: ${esc(failed.join(", "))}.</b>
-      Số liệu liên quan đang để trống và danh sách việc có thể chưa đủ. Tải lại trang sau ít phút.</div>` : ""}
-    <p class="summary">${line1} ${line2}</p>
+    ${failed.length ? `<div class="note alarm">${ico("alert")}<div><b>Chưa tải được: ${esc(failed.join(", "))}.</b>
+      Số liệu liên quan đang để “—” và danh sách việc có thể chưa đủ. Tải lại trang sau ít phút.</div></div>` : ""}
+    <div class="overview">
+      <section class="card hero-fig" aria-label="Tiền tháng này">
+        <div class="label">${ico("cash")}${fmtPeriod(period)} đã thu</div>
+        <div class="big">${dash.ok ? fmtMoney(kpi.revenue_month) : "—"}</div>
+        <div class="of">${inv.ok ? `trên tổng <span class="num">${fmtMoney(billed)}</span> đã lập · thu được ${s.collection_rate ?? 0}%` : "chưa rõ tổng đã lập"}</div>
+        ${inv.ok ? `<div class="meter" role="img" aria-label="Đã thu ${pct(collected)}, quá hạn ${pct(odSum)}">
+            <i class="m-ok" style="width:${pct(collected)}"></i><i class="m-due" style="width:${pct(odSum)}"></i></div>
+          <div class="meter-key">
+            <span><i class="sw m-ok"></i>Đã thu <b>${fmtMoney(collected)}</b></span>
+            <span><i class="sw m-due"></i>Quá hạn <b class="due">${fmtMoney(odSum)}</b></span>
+            <span>Chưa đến hạn <b>${fmtMoney(notDue)}</b></span></div>` : ""}
+      </section>
+      <div class="stats">
+        <section class="card stat"><div class="label">${ico("receipt", "sm")}Còn phải thu</div>
+          <div class="v warn-t">${inv.ok ? fmtMoney(s.total_outstanding) : "—"}</div>
+          <div class="s">${inv.ok ? `${s.pending ?? 0} chờ trả · ${s.overdue ?? 0} quá hạn` : ""}</div></section>
+        <section class="card stat"><div class="label">${ico("door", "sm")}Phòng có người</div>
+          <div class="v">${rooms.ok ? `${r.occupied ?? 0}/${r.total ?? 0}` : "—"}</div>
+          <div class="s">${occRate !== null ? `lấp đầy ${occRate}%` : ""}</div></section>
+        <section class="card stat ${inc.length ? "alarm" : ""}"><div class="label">${ico("wrench", "sm")}Sự cố đang mở</div>
+          <div class="v">${incidents.ok ? inc.length : "—"}</div>
+          <div class="s">${incidents.ok ? (urgent ? `${urgent} khẩn cấp` : "không có việc khẩn") : ""}</div></section>
+        <section class="card stat"><div class="label">${ico("cal", "sm")}Sắp hết hạn</div>
+          <div class="v">${expiring.ok ? ex.length : "—"}</div>
+          <div class="s">hợp đồng trong 30 ngày</div></section>
+      </div>
+    </div>
     <div class="home-grid">
-      <section class="section">
-        <h2>Việc cần làm${todos.length ? ` <span class="sub">· ${todos.length}</span>` : ""}</h2>
-        ${todos.length ? `<ul class="todo-list">${todos.map(([red, t, sub, target, btn]) => `
-          <li class="todo ${red ? "due" : ""}"><div><b>${esc(t)}</b><span>${esc(sub)}</span></div>
+      <section class="card">
+        <div class="card-h">${ico("check")}<h2>Việc cần làm</h2><span class="sub">${todos.length ? todos.length + " việc" : ""}</span></div>
+        ${todos.length ? `<ul class="todo-list">${todos.map(([red, icon, t, sub, target, btn]) => `
+          <li class="todo ${red ? "due" : ""}">${ico(icon)}<div><b>${esc(t)}</b><span>${esc(sub)}</span></div>
             <button class="btn ghost sm" data-go="${target}">${btn}</button></li>`).join("")}</ul>`
           : failed.length ? empty("Chưa kiểm tra được đầy đủ", "Một số dữ liệu chưa tải được nên chưa thể kết luận.")
           : empty("Không còn việc gì", "Không có hóa đơn quá hạn, sự cố hay hợp đồng cần xử lý.")}
       </section>
-      <section class="section">
-        <h2>Sổ thu 7 ngày</h2>
-        ${pts.length ? `<table>
-          <tr><th>Ngày</th><th class="right">Đã thu</th></tr>
-          ${pts.map((p) => `<tr><td class="num">${fmtDate(p.stat_date)}</td>
-            <td class="right ${num(p.collected) ? "" : "sub"}">${money(p.collected)}</td></tr>`).join("")}
-          <tr><td class="strong">Cộng</td><td class="right strong">${money(total7)}</td></tr></table>`
+      <section class="card">
+        <div class="card-h">${ico("cash")}<h2>Sổ thu 7 ngày</h2><span class="sub num">${pts.length ? fmtMoney(total7) : ""}</span></div>
+        ${pts.length ? `<div class="tbl-wrap"><table>
+          ${pts.map((p) => `<tr><td class="num sub">${fmtDate(p.stat_date)}</td>
+            <td class="right">${money(p.collected)}${num(p.collected) ? `<i class="ledger-bar" style="width:${(num(p.collected) / max7) * 100}%"></i>` : ""}</td></tr>`).join("")}
+          </table></div>`
           : empty("Chưa có khoản thu nào", "Sổ sẽ có dòng khi có thanh toán đầu tiên.")}
       </section>
     </div>`;
@@ -434,17 +481,16 @@ VIEWS.plan = async (v) => {
   let current = buildings.length > 1 ? "" : buildings[0];
 
   v.innerHTML = head("Sơ đồ phòng", `${rooms.length} phòng · ${count("OCCUPIED")} đang thuê · ${count("AVAILABLE")} còn trống`) + `
-    ${partial ? `<div class="note alarm">Chưa tải được ${!contracts.ok ? "tên người thuê" : ""}${!contracts.ok && !overdue.ok ? " và " : ""}${!overdue.ok ? "công nợ" : ""}; sơ đồ chỉ hiện trạng thái phòng.</div>` : ""}
-    <div class="toolbar">
-      ${buildings.length > 1 ? filterBar("seg", "b", [["", "Tất cả tòa"], ...buildings.map((b) => [esc(b), "Tòa " + esc(b)])], "") : ""}
-    </div>
+    ${partial ? `<div class="note alarm">${ico("alert")}<div>Chưa tải được ${!contracts.ok ? "tên người thuê" : ""}${!contracts.ok && !overdue.ok ? " và " : ""}${!overdue.ok ? "công nợ" : ""}; sơ đồ chỉ hiện trạng thái phòng.</div></div>` : ""}
+    <div class="card plan-bar">${buildings.length > 1 ? `<div class="toolbar">
+      ${filterBar("seg", "b", [["", "Tất cả tòa"], ...buildings.map((b) => [esc(b), "Tòa " + esc(b)])], "")}</div>` : ""}
     <div class="legend" aria-label="Chú giải">
       <span><i class="OCCUPIED"></i>Đang thuê · ${count("OCCUPIED")}</span>
       <span><i class="AVAILABLE"></i>Còn trống · ${count("AVAILABLE")}</span>
       <span><i class="MAINTENANCE"></i>Bảo trì · ${count("MAINTENANCE")}</span>
       ${count("RESERVED") ? `<span><i class="RESERVED"></i>Đã giữ chỗ · ${count("RESERVED")}</span>` : ""}
       <span class="due"><b>Nợ</b> quá hạn tiền</span>
-    </div>
+    </div></div>
     <div id="plan"></div>`;
 
   const render = () => {
@@ -452,8 +498,8 @@ VIEWS.plan = async (v) => {
     $("#plan").innerHTML = list.length ? list.map((b) => {
       const floors = Object.keys(tree[b]).sort((x, y) => (Number(y) || 0) - (Number(x) || 0));
       const all = floors.flatMap((f) => tree[b][f]);
-      return `<section class="building">
-        <h2>Tòa ${esc(b)}<span class="sub">${all.filter((r) => r.status === "OCCUPIED").length}/${all.length} phòng có người</span></h2>
+      return `<section class="card building">
+        <div class="card-h">${ico("home")}<h2>Tòa ${esc(b)}</h2><span class="sub">${all.filter((r) => r.status === "OCCUPIED").length}/${all.length} phòng có người</span></div>
         ${floors.map((f) => {
           const rs = tree[b][f].sort((x, y) => x.room_number.localeCompare(y.room_number, "vi", { numeric: true }));
           const free = rs.filter((r) => r.status === "AVAILABLE").length;
@@ -504,9 +550,9 @@ VIEWS.meters = async (v) => {
   let period = curPeriod();
   v.innerHTML = head("Sổ điện nước", "Ghi số công tơ cuối kỳ cho các phòng đang có người thuê",
       `<label class="inline-lab" for="per">Kỳ</label><input type="month" id="per" value="${period.slice(0, 7)}">
-       <button class="btn" id="save">Lưu chỉ số</button>`) + `
+       <button class="btn" id="save">${ico("check", "sm")}Lưu chỉ số</button>`) + `
     <div id="msg"></div>
-    <div class="tbl-wrap" id="tbl">${skeleton()}</div>`;
+    <div class="card"><div class="tbl-wrap" id="tbl">${skeleton()}</div></div>`;
 
   let rows = [];
   const load = async () => {
@@ -528,8 +574,8 @@ VIEWS.meters = async (v) => {
     }));
     const doneCount = rows.filter((x) => x.e.cur && x.w.cur).length;
     if (rows.length && doneCount === rows.length) {
-      $("#msg").innerHTML = `<div class="note">Đã nhập đủ chỉ số ${fmtPeriod(period).toLowerCase()} cho ${rows.length} phòng.
-        <a href="#" id="to-inv" class="strong">Phát hành hóa đơn</a></div>`;
+      $("#msg").innerHTML = `<div class="note ok">${ico("check")}<div>Đã nhập đủ chỉ số ${fmtPeriod(period).toLowerCase()} cho ${rows.length} phòng.
+        <a href="#" id="to-inv" class="strong">Phát hành hóa đơn</a></div></div>`;
       $("#to-inv").addEventListener("click", (e) => { e.preventDefault(); state.arg = "issue"; go("invoices"); });
     }
     const cell = (r, t, d) => {
@@ -542,13 +588,13 @@ VIEWS.meters = async (v) => {
               <div class="use" data-use></div></td>`;
     };
     $("#tbl").innerHTML = rows.length ? `<table>
-      <tr><th>Phòng</th><th class="right">Điện kỳ trước</th><th class="right">Điện kỳ này</th>
-          <th class="right">Nước kỳ trước</th><th class="right">Nước kỳ này</th><th>Tình trạng</th></tr>
+      <tr><th>Phòng</th><th class="right">${ico("zap", "sm")}Điện kỳ trước</th><th class="right">Điện kỳ này</th>
+          <th class="right">${ico("drop", "sm")}Nước kỳ trước</th><th class="right">Nước kỳ này</th><th>Tình trạng</th></tr>
       ${rows.map(({ room, e, w }) => `<tr>
         <td class="num strong">${esc(room.room_number)}</td>
         <td class="right sub num">${e.prev ? fmtQty(e.prev.reading_value) : "—"}</td>${cell(room, "ELECTRIC", e)}
         <td class="right sub num">${w.prev ? fmtQty(w.prev.reading_value) : "—"}</td>${cell(room, "WATER", w)}
-        <td>${e.cur && w.cur ? '<span class="tag">Đã nhập</span>' : '<span class="tag quiet">Chưa nhập</span>'}</td></tr>`).join("")}</table>`
+        <td>${e.cur && w.cur ? '<span class="tag g">Đã nhập</span>' : '<span class="tag a">Chưa nhập</span>'}</td></tr>`).join("")}</table>`
       : empty("Chưa có phòng nào đang cho thuê");
     $$(".meter-in", $("#tbl")).forEach((inp) => inp.addEventListener("input", () => {
       const prevV = inp.dataset.prev === "" ? null : num(inp.dataset.prev);
@@ -576,8 +622,8 @@ VIEWS.meters = async (v) => {
       });
       await load();
       if (res.skipped) {
-        $("#msg").insertAdjacentHTML("afterbegin", `<div class="note alarm">
-          <b>Đã lưu ${res.inserted} chỉ số, ${res.skipped} chỉ số bị từ chối:</b><br>${res.errors.map((e) => esc(e.reason)).join("<br>")}</div>`);
+        $("#msg").insertAdjacentHTML("afterbegin", `<div class="note alarm">${ico("alert")}<div>
+          <b>Đã lưu ${res.inserted} chỉ số, ${res.skipped} chỉ số bị từ chối:</b><br>${res.errors.map((e) => esc(e.reason)).join("<br>")}</div></div>`);
       }   // lưu đủ: bảng tải lại hiện số vừa nhập — không cần thông báo
     } catch (err) { toast(err.message, "err"); }
     finally { $("#save").disabled = false; }
@@ -594,13 +640,13 @@ VIEWS.invoices = async (v) => {
   let status = arg === "OVERDUE" ? "OVERDUE" : "";
   let period = "";
   v.innerHTML = head("Sổ thu tiền", "Hóa đơn từng kỳ và tiền người thuê đã trả",
-      `<button class="btn" id="issue">Phát hành hóa đơn</button>`) + `
-    <dl class="figures" id="sum"></dl>
-    <div class="toolbar">
+      `<button class="btn" id="issue">${ico("send", "sm")}Phát hành hóa đơn</button>`) + `
+    <section class="card hero-fig inv-sum" id="sum">${skeleton()}</section>
+    <div class="card"><div class="toolbar">
       <input type="month" id="per" aria-label="Lọc theo kỳ">
       ${filterBar("seg", "s", [["", "Tất cả"], ["PENDING", "Chờ thanh toán"], ["OVERDUE", "Quá hạn"], ["PAID", "Đã thanh toán"]], status)}
     </div>
-    <div class="tbl-wrap" id="tbl">${skeleton()}</div>`;
+    <div class="tbl-wrap" id="tbl">${skeleton()}</div></div>`;
   const markSeg = () => markFilter("seg", "s", status);
 
   const load = async () => {
@@ -610,10 +656,15 @@ VIEWS.invoices = async (v) => {
     ]);
     if (!res.ok) throw new Error(apiErr(res));
     const s = stats.data || {};
+    const billed = num(s.total_billed), pctOf = (x) => billed ? Math.min(100, (num(x) / billed) * 100).toFixed(1) + "%" : "0%";
     $("#sum").innerHTML = `
-      <div><dt>Đã lập · ${s.total_invoices ?? 0} hóa đơn</dt><dd>${fmtMoney(s.total_billed)}</dd></div>
-      <div><dt>Đã thu · ${s.paid ?? 0} trả đủ</dt><dd>${fmtMoney(s.total_collected)}</dd></div>
-      <div><dt>Còn phải thu${s.overdue ? ` · <span class="due">${s.overdue} quá hạn</span>` : ""}</dt><dd>${fmtMoney(s.total_outstanding)}</dd></div>`;
+      <div class="label">${ico("receipt")}${period ? fmtPeriod(period) : "Mọi kỳ"} · ${s.total_invoices ?? 0} hóa đơn đã lập</div>
+      <div class="big">${fmtMoney(s.total_billed)}</div>
+      <div class="meter" role="img" aria-label="Đã thu ${pctOf(s.total_collected)}">
+        <i class="m-ok" style="width:${pctOf(s.total_collected)}"></i></div>
+      <div class="meter-key">
+        <span><i class="sw m-ok"></i>Đã thu <b>${fmtMoney(s.total_collected)}</b> · ${s.paid ?? 0} trả đủ</span>
+        <span>Còn phải thu <b class="warn-t">${fmtMoney(s.total_outstanding)}</b>${s.overdue ? ` · <span class="due">${s.overdue} quá hạn</span>` : ""}</span></div>`;
     const list = items(res);
     const owe = (i) => num(i.total_amount) - num(i.paid_amount);
     $("#tbl").innerHTML = list.length ? `<table>
@@ -639,8 +690,8 @@ function issueInvoices(pid, after) {
   const m = modal({
     title: "Phát hành hóa đơn",
     body: `<div class="field"><label>Kỳ hóa đơn</label><input type="month" name="period" value="${curPeriod().slice(0, 7)}"></div>
-      <p class="note">Hệ thống tạo hóa đơn cho mọi hợp đồng đang hiệu lực: tiền phòng, điện nước theo bậc thang và phí dịch vụ.
-        Hợp đồng nào đã có hóa đơn kỳ này sẽ được bỏ qua, bấm lại nhiều lần cũng không bị trùng.</p>
+      <div class="note">${ico("alert")}<p>Hệ thống tạo hóa đơn cho mọi hợp đồng đang hiệu lực: tiền phòng, điện nước theo bậc thang và phí dịch vụ.
+        Hợp đồng nào đã có hóa đơn kỳ này sẽ được bỏ qua, bấm lại nhiều lần cũng không bị trùng.</p></div>
       <div id="job" class="hidden"><div class="progress"><i></i></div><div class="sub" id="job-t"></div></div>`,
     submit: "Phát hành",
     onSubmit: async (form) => {
@@ -692,10 +743,10 @@ async function invoiceDetail(id, after) {
       const sig = amount + "|" + val(form, "method");
       if (form.dataset.confirmed !== sig) {
         form.dataset.confirmed = sig;
-        $("[data-confirm]", form).innerHTML = `<div class="note">
+        $("[data-confirm]", form).innerHTML = `<div class="note alarm">${ico("alert")}<div>
           Xác nhận đã nhận <b class="num">${fmtMoney(amount)}</b> bằng <b>${esc(LABEL.method[val(form, "method")])}</b>
           từ ${esc(inv.tenant_name)} (phòng ${esc(inv.room_number || "—")})?<br>
-          Sau khi ghi nhận sẽ không xóa được trên phần mềm.</div>`;
+          Sau khi ghi nhận sẽ không xóa được trên phần mềm.</div></div>`;
         $("button[type=submit]", form).textContent = "Xác nhận đã nhận tiền";
         return false;
       }
@@ -711,7 +762,7 @@ async function invoiceDetail(id, after) {
 /* Nút "In biên lai" cạnh nút Đóng — in chỉ phần .receipt (xem @media print) */
 function printButton(m) {
   const f = $(".modal-f", m.el);
-  f.insertAdjacentHTML("afterbegin", `<button type="button" class="btn ghost" data-print>In biên lai</button>`);
+  f.insertAdjacentHTML("afterbegin", `<button type="button" class="btn ghost" data-print>${ico("printer", "sm")}In biên lai</button>`);
   $("[data-print]", f).addEventListener("click", () => window.print());
 }
 
@@ -719,7 +770,7 @@ function printButton(m) {
 function receipt(inv) {
   return `<div class="receipt">
     <div class="receipt-head">
-      <div><img src="/brand/wordmark.svg?v=1" alt="EZ-Rent" width="114" height="20">
+      <div><img class="brand-light" src="/brand/wordmark.svg?v=1" alt="EZ-Rent" width="114" height="20"><img class="brand-dark" src="/brand/wordmark-dark.svg?v=1" alt="EZ-Rent" width="114" height="20">
         <div class="strong rc-name">${esc(inv.tenant_name)}</div>
         <div class="sub">Phòng <span class="num">${esc(inv.room_number || "—")}</span></div></div>
       <div class="meta"><div class="strong">HÓA ĐƠN ${fmtPeriod(inv.period).toUpperCase()}</div>
@@ -754,9 +805,9 @@ VIEWS.contracts = async (v) => {
   const arg = state.arg; state.arg = null;
   let mode = arg === "expiring" ? "expiring" : "ACTIVE";
   v.innerHTML = head("Hợp đồng", "Soạn, kích hoạt và theo dõi thời hạn hợp đồng thuê",
-      `<button class="btn" id="new">Tạo hợp đồng</button>`) + `
-    <div class="toolbar">${filterBar("seg", "m", [["ACTIVE", "Đang hiệu lực"], ["expiring", "Sắp hết hạn"], ["draft", "Đang soạn"], ["", "Tất cả"]], mode)}</div>
-    <div class="tbl-wrap" id="tbl">${skeleton()}</div>`;
+      `<button class="btn" id="new">${ico("plus", "sm")}Tạo hợp đồng</button>`) + `
+    <div class="card"><div class="toolbar">${filterBar("seg", "m", [["ACTIVE", "Đang hiệu lực"], ["expiring", "Sắp hết hạn"], ["draft", "Đang soạn"], ["", "Tất cả"]], mode)}</div>
+    <div class="tbl-wrap" id="tbl">${skeleton()}</div></div>`;
   const load = async () => {
     markFilter("seg", "m", mode);
     const rooms = await roomMap();
@@ -779,7 +830,7 @@ VIEWS.contracts = async (v) => {
         <td>${esc(c.primary_tenant_name)}<div class="sub small num">${esc(c.primary_tenant_phone)}</div></td>
         <td class="nowrap num">${fmtDate(c.start_date)} – ${fmtDate(c.end_date)}
           ${c.days_remaining !== null && c.days_remaining !== undefined && c.days_remaining <= 60
-            ? `<div class="small strong">còn ${c.days_remaining} ngày</div>` : ""}</td>
+            ? `<div class="small strong warn-t">còn ${c.days_remaining} ngày</div>` : ""}</td>
         <td class="right">${money(c.monthly_price)}</td><td>${pill(LABEL.contract, c.status)}</td></tr>`).join("")}</table>`
       : empty(mode === "expiring" ? "Không có hợp đồng nào sắp hết hạn" : "Không có hợp đồng nào");
     rowsOpen($("#tbl"), (id) => contractDetail(id, load));
@@ -854,7 +905,7 @@ async function contractDetail(id, after) {
         <dt>Người thuê</dt><dd>${esc(c.primary_tenant_name)} · <span class="num">${esc(c.primary_tenant_phone)}</span></dd>
         <dt>Thời hạn</dt><dd class="num">${fmtDate(c.start_date)} – ${fmtDate(c.end_date)}</dd>
         <dt>Giá thuê</dt><dd>${money(c.monthly_price)} / tháng</dd>
-        <dt>Tiền cọc</dt><dd>${money(c.deposit_amount)} ${c.deposit_paid_at ? `<span class="tag">đã thu ${fmtDate(c.deposit_paid_at)}</span>` : num(c.deposit_amount) ? '<span class="tag quiet">chưa thu</span>' : ""}</dd>
+        <dt>Tiền cọc</dt><dd>${money(c.deposit_amount)} ${c.deposit_paid_at ? `<span class="tag g">đã thu ${fmtDate(c.deposit_paid_at)}</span>` : num(c.deposit_amount) ? '<span class="tag a">chưa thu</span>' : ""}</dd>
         ${num(c.deposit_deducted) ? `<dt>Cọc còn lại</dt><dd>${money(c.remaining_deposit)}</dd>` : ""}
         ${c.terminated_reason ? `<dt>Lý do kết thúc</dt><dd>${esc(c.terminated_reason)}</dd>` : ""}
       </dl>
@@ -902,9 +953,9 @@ function reasonForm(title, minLen, call, ok, after) {
 VIEWS.tenants = async (v) => {
   const pid = await propertyId();
   v.innerHTML = head("Người thuê", "Hồ sơ người thuê. Số CCCD được mã hóa và chỉ hiện 4 số cuối.",
-      `<button class="btn" id="new">Thêm người thuê</button>`) + `
-    <div class="toolbar"><div class="search"><input id="q" type="search" aria-label="Tìm người thuê" placeholder="Tìm theo tên, số điện thoại, email"></div></div>
-    <div class="tbl-wrap" id="tbl">${skeleton()}</div>`;
+      `<button class="btn" id="new">${ico("plus", "sm")}Thêm người thuê</button>`) + `
+    <div class="card"><div class="toolbar"><div class="search">${ico("search", "sm")}<input id="q" type="search" aria-label="Tìm người thuê" placeholder="Tìm theo tên, số điện thoại, email"></div></div>
+    <div class="tbl-wrap" id="tbl">${skeleton()}</div></div>`;
   const load = async () => {
     const [res, rooms] = await Promise.all([api("GET", "/api/v1/tenants?" + qs({ page_size: 100, search: $("#q").value.trim() })), roomMap()]);
     if (!res.ok) throw new Error(apiErr(res));
@@ -973,8 +1024,8 @@ function newTenant(pid, after) {
 VIEWS.incidents = async (v) => {
   let open = true;
   v.innerHTML = head("Sự cố", "Phiếu báo hỏng từ người thuê và quản lý") + `
-    <div class="toolbar">${filterBar("seg", "o", [["1", "Chưa xử lý xong"], ["", "Tất cả"]], "1")}</div>
-    <div class="tbl-wrap" id="tbl">${skeleton()}</div>`;
+    <div class="card"><div class="toolbar">${filterBar("seg", "o", [["1", "Chưa xử lý xong"], ["", "Tất cả"]], "1")}</div>
+    <div class="tbl-wrap" id="tbl">${skeleton()}</div></div>`;
   const load = async () => {
     const res = await api("GET", "/api/v1/incidents?" + qs({ page_size: 100, is_open: open || "" }));
     if (!res.ok) throw new Error(apiErr(res));
@@ -1050,13 +1101,13 @@ VIEWS["my-invoices"] = async (v) => {
   const next = due.sort((a, b) => a.due_date.localeCompare(b.due_date))[0];
   const late = next && next.days_overdue;
   v.innerHTML = head("Hóa đơn của tôi", state.myRoom ? `Phòng <span class="num">${esc(state.myRoom.number)}</span>` : "") + `
-    <div class="amount-due">
-      ${owed > 0 ? `<div class="sub">Cần thanh toán</div><span class="num ${late ? "due" : ""}">${fmtMoney(owed)}</span>
+    <div class="card amount-due ${owed > 0 ? "" : "paid"}">
+      ${owed > 0 ? `<div class="label">${ico("cash")}Cần thanh toán</div><span class="big ${late ? "due" : ""}">${fmtMoney(owed)}</span>
           <div class="${late ? "due strong" : "sub"}">${late ? `Đã quá hạn ${next.days_overdue} ngày` : `Hạn trả ${fmtDate(next.due_date)}`}</div>
-          <button class="btn" id="pay">Xem cách thanh toán</button>`
-        : `<b>Bạn đã thanh toán đủ.</b><div class="sub">Không có khoản nào cần trả.</div>`}
+          <button class="btn" id="pay">${ico("send", "sm")}Xem cách thanh toán</button>`
+        : `<div class="label">${ico("check")}Bạn đã thanh toán đủ</div><div class="sub">Không có khoản nào cần trả.</div>`}
     </div>
-    <section><h2 class="section-t">Các kỳ gần đây</h2>
+    <section class="card"><div class="card-h">${ico("receipt")}<h2>Các kỳ gần đây</h2></div>
       ${list.length ? `<ul class="list">${list.map((i) => `<li><button type="button" data-id="${i.id}">
           <span><span class="strong">${fmtPeriod(i.period)}</span><span class="sub small"> · hạn ${fmtDate(i.due_date)}</span></span>
           <span class="right">${money(i.total_amount)} ${pill(LABEL.invoice, i.status)}</span></button></li>`).join("")}</ul>`
@@ -1084,8 +1135,8 @@ VIEWS["my-incidents"] = async (v) => {
     state.myRoom = inv.length ? { id: inv[0].room_id, number: inv[0].room_number } : null;
   }
   v.innerHTML = head("Báo sự cố", "Báo hỏng hóc trong phòng, quản lý sẽ liên hệ xử lý",
-      `<button class="btn" id="new">Báo sự cố mới</button>`) + `
-    <div id="list">${skeleton()}</div>`;
+      `<button class="btn" id="new">${ico("plus", "sm")}Báo sự cố mới</button>`) + `
+    <div class="card" id="list">${skeleton()}</div>`;
   const load = async () => {
     const list = items(await api("GET", "/api/v1/incidents?page_size=50"));
     $("#list").innerHTML = list.length ? `<ul class="list">${list.map((i) => `<li><button type="button" data-id="${i.id}">
@@ -1147,11 +1198,11 @@ async function myIncident(id, after) {
 VIEWS.profile = async (v) => {
   const u = await must("GET", "/api/v1/auth/me");
   v.innerHTML = head(esc(u.full_name), `${esc(u.username)} · ${LABEL.role[u.role] || u.role}`) + `
-    <div class="narrow-page"><dl class="kv">
+    <div class="card narrow-page"><div class="card-b pad-top"><dl class="kv">
       <dt>Email</dt><dd>${esc(u.email)}</dd><dt>Điện thoại</dt><dd class="num">${esc(u.phone || "—")}</dd>
       <dt>Đăng nhập gần nhất</dt><dd class="num">${u.last_login_at ? new Date(u.last_login_at).toLocaleString("vi-VN") : "—"}</dd></dl>
-      <div class="acts"><button class="btn ghost" id="pw">Đổi mật khẩu</button></div>
-    </div>`;
+      <div class="acts"><button class="btn ghost" id="pw">${ico("key", "sm")}Đổi mật khẩu</button></div>
+    </div></div>`;
   $("#pw").addEventListener("click", () => modal({
     title: "Đổi mật khẩu",
     body: `<div class="field"><label>Mật khẩu hiện tại</label><input type="password" name="old" autocomplete="current-password" required></div>

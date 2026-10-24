@@ -4,77 +4,98 @@ Hệ thiết kế cố định cho giao diện web (`web/`). Mọi lần sửa g
 trước. Muốn đổi hệ thì sửa file này trước, không ghi đè cục bộ trong từng trang.
 Lý do chọn hướng: `docs/ideas/qlpt-giao-dien.md`.
 
+## Lịch sử
+- v1 (24/10/2026): "Mực & Sổ" thuần — giấy, mực, một màu đỏ, không thẻ, không icon.
+  Phản hồi người dùng: sạch nhưng quá trơn, thua bản cũ về màu, chiều sâu, icon, nền tối.
+- v2 (24/10/2026): giữ xương sống v1 (logo, font, số mono, đỏ son = nợ, im lặng khi
+  thành công) và thêm lại màu trạng thái dịu, thẻ có chiều sâu, icon trong dòng,
+  chế độ tối ấm.
+
 ## Genre
-Editorial thực dụng — "Mực & Sổ". Giấy sáng, mực, một màu tín hiệu. Chất "sổ"
-(dòng kẻ, số mono căn phải, biên lai) CHỈ ở bề mặt tiền và chỉ số.
+Editorial thực dụng — "Mực & Sổ". Chất "sổ" (số mono căn phải, đường kẻ đôi dưới
+tiêu đề bảng, biên lai) ở bề mặt tiền và chỉ số.
 
 ## Macrostructure family
-- App pages (mọi màn sau đăng nhập): Workbench — đầu trang (wordmark + tab mục
-  kiểu chia sổ) → tiêu đề trang + một dòng mô tả → nội dung là bảng/sổ, không thẻ.
-- Màn đăng nhập: một cột, logo đầy đủ, form, không khẩu hiệu.
-- Không có trang marketing.
+- App pages: Workbench — đầu trang (wordmark + tab mục) → tiêu đề trang → thẻ nội dung.
+- Trang chủ: thẻ chính (tiền tháng này + thanh tiến độ thu) chiếm 2/3, lưới 2×2 thẻ phụ
+  bên cạnh — không phải 4 thẻ bằng nhau.
+- Màn đăng nhập: một thẻ giữa trang, logo đầy đủ, không khẩu hiệu.
 
 ## Theme
-Hai màu thương hiệu lấy đúng từ logo (`web/brand/`).
-- `--color-paper`    oklch(97% 0.012 85)   — giấy ngà
-- `--color-paper-2`  oklch(94.5% 0.016 85) — hàng tiêu đề bảng, nền dòng nhấn
-- `--color-ink`      oklch(22.5% 0.013 78) — mực, = #1F1B15 của logo
-- `--color-ink-2`    oklch(46% 0.012 70)   — chữ phụ
-- `--color-rule`     oklch(84% 0.014 80)   — đường kẻ sổ
-- `--color-accent`   oklch(50% 0.199 28.6) — đỏ son, = #BA0D0D của logo
-- `--color-focus`    = ink (vòng focus 2px, hiện tức thì)
+Hai màu thương hiệu lấy đúng từ logo (`web/brand/`). Sáng mặc định theo hệ điều hành,
+người dùng đổi được (nút ở đầu trang, nhớ trong trình duyệt).
 
-Quy tắc đỏ: ngoài logo, đỏ CHỈ có nghĩa "nợ / quá hạn / khẩn / sự cố mới".
-Nút chính màu mực. Không có màu thứ ba.
+| Token | Sáng | Tối |
+|---|---|---|
+| `--color-paper` (nền trang) | oklch(96% 0.012 85) | oklch(17.5% 0.012 65) |
+| `--color-surface` (thẻ) | oklch(99.2% 0.005 85) | oklch(21.5% 0.013 65) |
+| `--color-surface-2` (đầu bảng, ô nhập) | oklch(94.5% 0.014 85) | oklch(25.5% 0.014 65) |
+| `--color-ink` | oklch(22.5% 0.013 78) | oklch(93% 0.01 85) |
+| `--color-ink-2` | oklch(46% 0.012 70) | oklch(72% 0.012 80) |
+| `--color-rule` | oklch(87% 0.014 80) | oklch(31% 0.012 65) |
+| `--color-accent` (đỏ son) | oklch(50% 0.199 28.6) | oklch(65% 0.18 28) |
+
+Màu trạng thái — tự pha, độ bão hòa thấp, mỗi màu có nền nhạt `-soft`:
+| Token | Nghĩa | Hue |
+|---|---|---|
+| `--color-ok` | đang thuê, đã thanh toán, đã xử lý | xanh rêu 155 |
+| `--color-info` | còn trống, chờ ký, đang xử lý | xanh xám 245 |
+| `--color-warn` | bảo trì, chờ thanh toán, sắp hết hạn | vàng đất 70 |
+| `--color-hold` | đã giữ chỗ | tím mận 320 |
+| `--color-accent` | nợ, quá hạn, khẩn, sự cố mới | đỏ son 28.6 |
+
+Quy tắc đỏ: đỏ son CHỈ có nghĩa "nợ / quá hạn / khẩn / sự cố mới". Nút chính màu mực.
 
 ## Typography
 - Chữ: Be Vietnam Pro 400 / 600 / 700 (tự host, có subset tiếng Việt)
 - Số: JetBrains Mono 400 / 600 — tiền, chỉ số, số phòng, mã hóa đơn
-- Thang 6 bậc: 12 · 14 · 16 · 20 · 28 · 40 px (`--text-xs` … `--text-3xl`)
-- Tiêu đề luôn roman, tracking -0.01em; không chữ nghiêng trong tiêu đề
+- Thang 6 bậc: 12 · 14 · 16 · 20 · 28 · 40 px
+- Tiêu đề luôn roman; không chữ nghiêng trong tiêu đề
 
 ## Spacing
-Thang 4pt có tên (`--space-1` = 4px … `--space-12` = 48px). Không dùng giá trị thô.
+Thang 4pt có tên (`--space-1` = 4px … `--space-12` = 48px).
 
-## Shape
-- Ô nhập, nút: bo 2px. Bảng, sổ, sơ đồ: không bo, không đổ bóng.
-- Hộp thoại: viền mực 1px, nền giấy, lớp phủ mực 40%, không blur.
+## Shape & depth
+- Thẻ: nền `surface`, viền `rule` 1px, bo 10px, bóng sát (sáng) / không bóng mà sáng
+  hơn nền (tối). Không lồng thẻ trong thẻ.
+- Ô nhập, nút, nhãn: bo 6px. Ô phòng: bo 8px.
+- Hộp thoại: thẻ nổi, lớp phủ mực 50%, không blur.
 
-## Trạng thái — nói bằng chữ và nét, không bằng màu
+## Trạng thái — màu + nét (không chỉ màu)
 | Trạng thái | Cách thể hiện |
 |---|---|
-| Đang thuê | viền liền |
-| Còn trống | viền nét đứt, chữ phụ |
-| Bảo trì | nền gạch chéo |
-| Đã giữ chỗ | viền đôi |
-| Nợ / quá hạn / khẩn | chữ đỏ son + nhãn chữ ("Nợ", "Quá hạn") |
-| Đã hủy / hết hạn | chữ phụ, gạch ngang nhẹ |
+| Đang thuê | nền `ok-soft`, viền `ok` |
+| Còn trống | nền `info-soft`, viền nét đứt `info` |
+| Bảo trì | nền gạch chéo `warn` |
+| Đã giữ chỗ | nền `hold-soft`, viền đôi `hold` |
+| Nợ | nhãn "Nợ" đỏ son + số phòng đỏ |
 
-Nhãn trạng thái là chữ thường có viền mảnh — không pill màu, không chấm tròn.
+Nhãn trạng thái: chữ màu trạng thái trên nền `-soft`, bo 6px, không chấm tròn.
+
+## Icons
+Một bộ nét 2px (kiểu Lucide, nhúng sprite trong `index.html`). Icon đặt TRONG DÒNG
+trước nhãn tab, tiêu đề thẻ, nhãn số liệu, nút chính, dòng việc cần làm. Không ô vuông
+tô màu chứa icon, không icon trang trí ở trạng thái trống.
 
 ## Motion
-- Chỉ đổi màu nền/viền, 120ms, `--ease-out: cubic-bezier(0.2, 0, 0, 1)`.
+- Đổi màu nền/viền 120ms, `--ease-out: cubic-bezier(0.2, 0, 0, 1)`.
 - Không skeleton nhấp nháy, không hover nhấc lên, không animation vào trang.
 - `prefers-reduced-motion`: tắt hết transition.
 
 ## Microinteractions stance
-- Thành công thấy được trên màn hình → im lặng (không toast).
-- Toast chỉ cho: lỗi, việc chạy nền (phát hành hóa đơn), và thao tác làm dòng
-  biến khỏi danh sách đang xem.
+- Thành công thấy được trên màn hình → im lặng.
+- Toast chỉ cho: lỗi, việc chạy nền, thao tác làm dòng biến khỏi danh sách đang xem.
 - Thao tác tiền không hoàn tác được → xác nhận 2 bước ngay trong form.
 
 ## CTA voice
-- Chính: nền mực, chữ giấy, bo 2px, động từ ngắn ("Lưu chỉ số", "Phát hành").
-- Phụ: viền mực, nền trong suốt.
-- Nguy hiểm: chữ đỏ son, viền đỏ son — chỉ cho hủy/chấm dứt.
-
-## Icons
-Gần như không dùng. Không icon trang trí trước nhãn, KPI, ghi chú hay trạng thái trống.
+- Chính: nền mực, chữ nền, bo 6px, icon trong dòng + động từ ngắn.
+- Phụ: viền `rule`, nền `surface`.
+- Nguy hiểm: chữ + viền đỏ son — chỉ cho hủy/chấm dứt.
 
 ## Exports
-
 ### tokens.css
-Khối `:root` ở đầu `web/app.css` là nguồn duy nhất của token.
+Khối `:root` (sáng) và `[data-theme="dark"]` / `prefers-color-scheme: dark` (tối) ở đầu
+`web/app.css` là nguồn duy nhất của token.
 
 ## Provenance
 Hệ thiết kế được xây cho dự án này (custom, studied: no) — 24/10/2026.
