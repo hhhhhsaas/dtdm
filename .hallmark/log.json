@@ -1,0 +1,13 @@
+[
+  {
+    "date": "2026-10-24",
+    "scope": "app",
+    "macrostructure": "Workbench",
+    "theme": "custom",
+    "theme_axes": "light / grotesk-sans / warm",
+    "vibe": "sổ thu tiền trọ, mực và đỏ son",
+    "nav": "tab chia sổ (máy tính) · thanh đáy (điện thoại)",
+    "enrichment": "none",
+    "brief": "EZ-Rent · quản lý phòng trọ cho chủ trọ + người thuê — làm lại toàn bộ giao diện theo design.md"
+  }
+]
