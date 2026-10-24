@@ -263,7 +263,8 @@ const NAV = {
     [["profile", "user", "Tài khoản"]],
   ],
   tenant: [
-    [["my-invoices", "receipt", "Hóa đơn"], ["my-incidents", "wrench", "Báo sự cố"], ["profile", "user", "Tài khoản"]],
+    [["room", "home", "Phòng của tôi"], ["my-invoices", "receipt", "Hóa đơn"], ["my-incidents", "wrench", "Sự cố"],
+     ["inbox", "bell", "Thông báo"], ["profile", "user", "Tài khoản"]],
   ],
 };
 const isTenant = () => state.user && state.user.role === "TENANT";
@@ -277,6 +278,9 @@ function enterApp() {
   state.tab = allowedTabs().includes(fromHash) ? fromHash : allowedTabs()[0];
   renderNav();
   go(state.tab);
+  if (isTenant() && state.tab !== "room" && state.tab !== "inbox") {
+    api("GET", "/api/v1/notifications/mine?limit=30").then((r) => { if (r.ok && Array.isArray(r.data)) inboxBadge(r.data); });
+  }
 }
 
 function renderNav() {
@@ -1215,6 +1219,175 @@ async function incidentDetail(id, after) {
 /* ======================================================================
    8. NGƯỜI THUÊ — hóa đơn của tôi (GET /invoices/mine)
    ====================================================================== */
+/* ======================================================================
+   7b. NGƯỜI THUÊ — "Phòng của tôi": một màn trả lời 5 câu hay hỏi chủ trọ
+       (trả bao nhiêu · hợp đồng còn bao lâu · điện nước có tăng · sự cố tới
+       đâu · có tin gì mới). Mọi API lọc theo tenant_id trong JWT.
+   ====================================================================== */
+const fmtAgo = (iso) => {
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 60) return "vừa xong";
+  if (s < 3600) return `${Math.floor(s / 60)} phút trước`;
+  if (s < 86400) return `${Math.floor(s / 3600)} giờ trước`;
+  if (s < 86400 * 7) return `${Math.floor(s / 86400)} ngày trước`;
+  return fmtDate(iso);
+};
+/* Thông báo chưa đọc → số đếm trên tab "Thông báo" */
+const inboxBadge = (list) => setBadge("inbox", list.filter((n) => !n.read_at).length);
+const noteTitle = (n) => n.subject || (n.body || "").split("\n")[0].slice(0, 90) || "Thông báo";
+
+/* Lượng điện / nước theo kỳ, lấy từ chi tiết hóa đơn (item_type ELECTRIC / WATER) */
+function usageSeries(invoices, type) {
+  return invoices.map((i) => {
+    const d = (i.details || []).find((x) => x.item_type === type);
+    return { period: i.period, qty: d && d.quantity !== null ? num(d.quantity) : null };
+  }).filter((x) => x.qty !== null).sort((a, b) => a.period.localeCompare(b.period)).slice(-6);
+}
+function usageCard(series, label, unit, icon) {
+  if (!series.length) return `<div class="usage"><div class="label">${ico(icon, "sm")}${label}</div><div class="sub">Chưa có số liệu.</div></div>`;
+  const last = series[series.length - 1], prev = series[series.length - 2];
+  const max = Math.max(...series.map((x) => x.qty), 1);
+  const diff = prev && prev.qty ? Math.round(((last.qty - prev.qty) / prev.qty) * 100) : null;
+  const trend = diff === null ? "" : diff > 0
+    ? `<span class="warn-t">tăng ${diff}% so với ${fmtPeriod(prev.period).toLowerCase()}</span>`
+    : diff < 0 ? `<span class="ok-t">giảm ${-diff}% so với ${fmtPeriod(prev.period).toLowerCase()}</span>`
+    : `<span class="sub">bằng ${fmtPeriod(prev.period).toLowerCase()}</span>`;
+  return `<div class="usage">
+    <div class="label">${ico(icon, "sm")}${label}</div>
+    <div class="usage-now"><span class="num">${fmtQty(last.qty)}</span> ${unit} <span class="sub">· ${fmtPeriod(last.period).toLowerCase()}</span></div>
+    <div class="small">${trend}</div>
+    <div class="ubars" role="img" aria-label="${label} ${series.length} kỳ gần nhất: ${series.map((x) => `${fmtPeriod(x.period)} ${fmtQty(x.qty)} ${unit}`).join(", ")}">
+      ${series.map((x, k) => `<div class="ucol ${k === series.length - 1 ? "now" : ""}">
+        <span class="utrack"><span class="uval num">${fmtQty(x.qty)}</span><i style="height:${Math.max(4, (x.qty / max) * 82)}%"></i></span>
+        <span class="ulab">T${Number(x.period.slice(5, 7))}</span></div>`).join("")}
+    </div></div>`;
+}
+
+VIEWS.room = async (v) => {
+  const [inv, con, inc, noti] = await Promise.all([
+    api("GET", "/api/v1/invoices/mine?limit=12"),
+    api("GET", "/api/v1/contracts/mine"),
+    api("GET", "/api/v1/incidents?page_size=50"),
+    api("GET", "/api/v1/notifications/mine?limit=30"),
+  ]);
+  const invoices = inv.ok && Array.isArray(inv.data) ? inv.data : [];
+  const contract = con.ok && Array.isArray(con.data) ? con.data[0] : null;
+  const incidents = items(inc).filter((x) => x.is_open);
+  const notes = noti.ok && Array.isArray(noti.data) ? noti.data : [];
+  if (noti.ok) inboxBadge(notes);
+  if (invoices.length) state.myRoom = { id: invoices[0].room_id, number: invoices[0].room_number };
+  const roomNo = (contract && contract.room_number) || (state.myRoom && state.myRoom.number);
+
+  // Tiền cần trả
+  const due = invoices.filter((i) => !["PAID", "CANCELLED"].includes(i.status));
+  const owed = due.reduce((a, i) => a + num(i.total_amount) - num(i.paid_amount), 0);
+  const next = due.slice().sort((a, b) => a.due_date.localeCompare(b.due_date))[0];
+  const late = next && next.days_overdue;
+
+  // Hợp đồng: thanh thời gian (đã ở bao lâu / tổng thời hạn)
+  let contractHtml = empty("Chưa có hợp đồng hiệu lực", "Liên hệ chủ trọ nếu bạn nghĩ đây là nhầm lẫn.");
+  if (contract) {
+    const start = new Date(contract.start_date), end = new Date(contract.end_date);
+    const pct = Math.min(100, Math.max(0, ((Date.now() - start) / (end - start)) * 100));
+    const left = contract.days_remaining;
+    contractHtml = `<div class="card-b">
+      ${contract.status === "PENDING_SIGN" ? `<div class="note">${ico("file")}<div>Hợp đồng đang <b>chờ bạn ký</b>. Liên hệ chủ trọ để hoàn tất.</div></div>` : ""}
+      <div class="contract-left"><span class="num ${left !== null && left <= 30 ? "warn-t" : ""}">${left ?? "—"}</span> ngày còn lại</div>
+      <div class="meter" role="img" aria-label="Đã ở ${pct.toFixed(0)}% thời hạn hợp đồng"><i class="m-ok" style="width:${pct.toFixed(1)}%"></i></div>
+      <div class="meter-key"><span class="num">${fmtDate(contract.start_date)}</span><span class="num">${fmtDate(contract.end_date)}</span></div>
+      <dl class="kv compact">
+        <dt>Mã hợp đồng</dt><dd class="num">${esc(contract.contract_no)}</dd>
+        <dt>Giá thuê</dt><dd>${money(contract.monthly_price)} / tháng</dd>
+        <dt>Tiền cọc</dt><dd>${money(contract.deposit_amount)} ${contract.deposit_paid_at ? '<span class="tag g">đã đóng</span>' : num(contract.deposit_amount) ? '<span class="tag a">chưa đóng</span>' : ""}</dd>
+        ${contract.roommates && contract.roommates.length ? `<dt>Ở cùng</dt><dd>${contract.roommates.map((r) => esc(r.full_name)).join(", ")}</dd>` : ""}
+      </dl></div>`;
+  }
+
+  v.innerHTML = head("Phòng của tôi", roomNo ? `Phòng <span class="num">${esc(roomNo)}</span>` : "") + `
+    ${!inv.ok || !con.ok || !noti.ok ? `<div class="note alarm">${ico("alert")}<div>Một số mục chưa tải được — tải lại trang sau ít phút.</div></div>` : ""}
+    <div class="room-grid">
+      <section class="card amount-due ${owed > 0 ? "" : "paid"}">
+        ${owed > 0 ? `<div class="label">${ico("cash")}Cần thanh toán</div>
+            <span class="big ${late ? "due" : ""}" data-count="${owed}">${fmtMoney(owed)}</span>
+            <div class="${late ? "due strong" : "sub"}">${late ? `Đã quá hạn ${next.days_overdue} ngày` : `Hạn trả ${fmtDate(next.due_date)}`}</div>`
+          : `<div class="label">${ico("check")}Bạn đã thanh toán đủ</div><div class="sub">Không có khoản nào cần trả.</div>`}
+        <button class="btn ${owed > 0 ? "" : "ghost"}" data-go="my-invoices">${ico("receipt", "sm")}${owed > 0 ? "Xem hóa đơn & cách trả" : "Xem các kỳ đã trả"}</button>
+      </section>
+      <section class="card">
+        <div class="card-h">${ico("file")}<h2>Hợp đồng</h2>${contract ? pill(LABEL.contract, contract.status) : ""}</div>
+        ${contractHtml}
+      </section>
+      <section class="card span-2">
+        <div class="card-h">${ico("gauge")}<h2>Điện nước của tôi</h2><span class="sub">6 kỳ gần nhất</span></div>
+        <div class="card-b usage-grid">
+          ${usageCard(usageSeries(invoices, "ELECTRIC"), "Điện", "kWh", "zap")}
+          ${usageCard(usageSeries(invoices, "WATER"), "Nước", "m³", "drop")}
+        </div>
+      </section>
+      <section class="card">
+        <div class="card-h">${ico("wrench")}<h2>Sự cố đang xử lý</h2><span class="sub">${incidents.length || ""}</span></div>
+        ${incidents.length ? `<ul class="list">${incidents.slice(0, 4).map((i) => `<li><button type="button" data-go="my-incidents">
+            <span class="strong">${esc(i.title)}</span>${pill(LABEL.incident, i.status)}</button></li>`).join("")}</ul>`
+          : `<div class="card-b"><div class="sub">Không có sự cố nào đang mở.</div>
+             <button class="btn ghost sm room-cta" data-go="my-incidents">${ico("plus", "sm")}Báo sự cố</button></div>`}
+      </section>
+      <section class="card">
+        <div class="card-h">${ico("bell")}<h2>Thông báo mới</h2></div>
+        ${notes.length ? `<ul class="list">${notes.slice(0, 3).map((n) => `<li><button type="button" data-go="inbox" class="${n.read_at ? "" : "unread"}">
+            <span><span class="strong">${esc(noteTitle(n))}</span><span class="sub small"><br>${fmtAgo(n.queued_at)}</span></span>
+            ${n.read_at ? "" : '<span class="tag b">Mới</span>'}</button></li>`).join("")}</ul>`
+          : `<div class="card-b sub">Chưa có thông báo nào.</div>`}
+      </section>
+    </div>`;
+  $$("[data-go]", v).forEach((b) => b.addEventListener("click", () => go(b.dataset.go)));
+};
+
+/* ======================================================================
+   7c. NGƯỜI THUÊ — Hộp thông báo
+   ====================================================================== */
+VIEWS.inbox = async (v) => {
+  v.innerHTML = head("Thông báo", "Nhắc hạn trả tiền, hóa đơn mới, kết quả xử lý sự cố",
+      `<button class="btn ghost" id="read-all">${ico("check", "sm")}Đánh dấu đã đọc hết</button>`) + `
+    <div class="card" id="list">${skeleton()}</div>`;
+  let list = [];
+  const render = () => {
+    inboxBadge(list);
+    $("#read-all").disabled = !list.some((n) => !n.read_at);
+    $("#list").innerHTML = list.length ? `<ul class="list inbox">${list.map((n) => `<li>
+        <button type="button" data-id="${n.id}" class="${n.read_at ? "" : "unread"}" aria-expanded="false">
+          <span><span class="strong">${esc(noteTitle(n))}</span><span class="sub small"><br>${fmtAgo(n.queued_at)}</span></span>
+          ${n.read_at ? "" : '<span class="tag b">Mới</span>'}</button>
+        <div class="note-body pre hidden">${esc(n.body || "")}</div></li>`).join("")}</ul>`
+      : empty("Chưa có thông báo nào", "Khi có hóa đơn mới hoặc sự cố được xử lý, thông báo sẽ hiện ở đây.");
+    $$(".inbox button[data-id]", $("#list")).forEach((b) => b.addEventListener("click", async () => {
+      const body = b.nextElementSibling;
+      const open = body.classList.toggle("hidden") === false;
+      b.setAttribute("aria-expanded", String(open));
+      const n = list.find((x) => x.id === b.dataset.id);
+      if (open && n && !n.read_at) {
+        // Lạc quan: đổi ngay trên màn hình, gửi API sau; lỗi thì trả lại như cũ
+        n.read_at = new Date().toISOString();
+        b.classList.remove("unread"); const t = $(".tag", b); if (t) t.remove();
+        inboxBadge(list); $("#read-all").disabled = !list.some((x) => !x.read_at);
+        const res = await api("POST", `/api/v1/notifications/mine/${n.id}/read`, {});
+        if (!res.ok) { n.read_at = null; toast("Chưa đánh dấu được đã đọc — thử lại sau.", "err"); render(); }
+      }
+    }));
+  };
+  $("#read-all").addEventListener("click", async () => {
+    const unread = list.filter((n) => !n.read_at);
+    unread.forEach((n) => { n.read_at = new Date().toISOString(); });
+    render();
+    const results = await Promise.all(unread.map((n) => api("POST", `/api/v1/notifications/mine/${n.id}/read`, {})));
+    if (results.some((r) => !r.ok)) { toast("Một số thông báo chưa đánh dấu được — thử lại sau.", "err"); load(); }
+  });
+  const load = async () => {
+    list = await must("GET", "/api/v1/notifications/mine?limit=50");
+    render();
+  };
+  await load();
+};
+
 VIEWS["my-invoices"] = async (v) => {
   const list = await must("GET", "/api/v1/invoices/mine");
   state.myRoom = list.length ? { id: list[0].room_id, number: list[0].room_number } : null;

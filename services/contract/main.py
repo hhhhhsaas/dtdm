@@ -430,6 +430,34 @@ async def contract_stats(
     )
 
 
+@contract_router.get("/mine", response_model=list[ContractResponse],
+                     summary="📄 Hợp đồng của tôi (người thuê)")
+async def list_my_contracts(
+    user: Annotated[CurrentUser, Depends(require_roles(Role.TENANT))],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> list[ContractResponse]:
+    """
+    Hợp đồng đang hiệu lực / đang chờ ký của người thuê đang đăng nhập.
+
+    ⭐ Lọc theo claim `tenant_id` trong JWT — giống `/invoices/mine`, KHÔNG nhận
+       tenant_id từ query (đổi tham số là xem được hợp đồng người khác).
+       Nháp (DRAFT) không trả về: đó là bản chủ trọ còn đang soạn, chưa gửi.
+       Đặt TRƯỚC route `/{contract_id}` để "mine" không bị hiểu là UUID.
+    """
+    if user.tenant_id is None:
+        return []          # tài khoản chưa gắn hồ sơ người thuê
+    rows = (await session.execute(
+        select(Contract)
+        .options(selectinload(Contract.roommates))   # response có roommates — nạp sẵn, async không lazy-load được
+        .where(
+            Contract.primary_tenant_id == user.tenant_id,
+            Contract.status.in_([ContractStatus.ACTIVE.value, ContractStatus.PENDING_SIGN.value]),
+        )
+        .order_by(Contract.start_date.desc())
+    )).scalars().all()
+    return [await _load_response(session, c) for c in rows]
+
+
 @contract_router.get("/{contract_id}", response_model=ContractResponse,
                      summary="Chi tiết hợp đồng")
 async def get_contract(

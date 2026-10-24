@@ -828,15 +828,8 @@ async def list_notifications(
     sort: str = Query("queued_desc", description="queued|created|priority|status"),
 ) -> dict:
     """
-    ⚠️ Endpoint này CHỈ dành cho ADMIN/MANAGER.
-
-    Người thuê (role TENANT) chưa có API hộp thư riêng ở service này, và đây là quyết
-    định CỐ Ý chứ không phải bỏ sót: để tenant A đọc được thông báo của tenant B thì
-    service phải phân giải được "tài khoản đang đăng nhập ↔ hồ sơ người thuê", mà quan
-    hệ đó nằm ở db_tenant + db_auth chứ không nằm trong db_notify. Chấp nhận nó sẽ
-    phải sao chép `user_id` vào đây — phá vỡ nguyên tắc "không sao chép dữ liệu
-    nghiệp vụ". Web client sẽ gọi API này sau khi tenant-service đã phân giải danh
-    tính. Xem docs/07 mục "Hộp thư người thuê".
+    ⚠️ Endpoint này CHỈ dành cho ADMIN/MANAGER. Người thuê dùng `GET /mine`
+    (lọc theo claim `tenant_id` trong JWT — không cần sao chép user_id vào db_notify).
     """
     effective = _resolve_property(user, property_id)
 
@@ -1003,6 +996,54 @@ async def send_notification(
             "Kiểm tra khuôn mẫu có tồn tại và đang bật không.",
         )
     record_business_event(settings.service_name, "notification.queued")
+    return NotificationResponse.model_validate(notification)
+
+
+@notification_router.get("/mine", response_model=list[NotificationResponse],
+                         summary="🔔 Hộp thông báo của tôi (người thuê)")
+async def list_my_notifications(
+    user: Annotated[CurrentUser, Depends(require_roles(Role.TENANT))],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    limit: int = Query(30, ge=1, le=100),
+) -> list[NotificationResponse]:
+    """
+    Hộp thư trong app của người thuê đang đăng nhập (kênh IN_APP), mới nhất trước.
+
+    ⭐ Trước đây cố ý chưa có API này: db_notify không biết tài khoản nào ứng với
+       hồ sơ người thuê nào. Nay JWT mang claim `tenant_id` (auth-service lấy từ
+       users.tenant_id) nên lọc được mà KHÔNG phải sao chép user_id vào db_notify.
+       Không nhận tenant_id từ query — đổi tham số là đọc được thư người khác.
+       Đặt TRƯỚC route `/{notification_id}` để "mine" không bị hiểu là UUID.
+    """
+    if user.tenant_id is None:
+        return []
+    rows = (await session.execute(
+        select(Notification)
+        .where(Notification.tenant_id == user.tenant_id,
+               Notification.channel == Channel.IN_APP.value)
+        .order_by(Notification.queued_at.desc())
+        .limit(limit)
+    )).scalars().all()
+    return [NotificationResponse.model_validate(n) for n in rows]
+
+
+@notification_router.post("/mine/{notification_id}/read", response_model=NotificationResponse,
+                          summary="✓ Người thuê đánh dấu đã đọc")
+async def mark_my_read(
+    notification_id: uuid.UUID,
+    user: Annotated[CurrentUser, Depends(require_roles(Role.TENANT))],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> NotificationResponse:
+    notification = await _get_notification_or_404(session, notification_id)
+    # Thư của người khác → 404 (không phải 403): không xác nhận là id đó có tồn tại.
+    if user.tenant_id is None or notification.tenant_id != user.tenant_id:
+        raise NotFoundError("Không tìm thấy thông báo")
+    if notification.read_at is None:
+        notification.read_at = datetime.now(UTC)
+        if notification.status in (NotificationStatus.SENT.value,
+                                   NotificationStatus.DELIVERED.value):
+            notification.status = NotificationStatus.READ.value
+        await session.flush()
     return NotificationResponse.model_validate(notification)
 
 

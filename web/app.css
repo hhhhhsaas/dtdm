@@ -485,6 +485,41 @@ th .ic { margin-right: var(--space-1); }
 .transfer { font-family: var(--font-num); font-size: var(--text-md); padding: var(--space-3) var(--space-4);
             margin: var(--space-3) 0; border: 1px dashed var(--color-ink-2); border-radius: var(--radius); background: var(--color-surface-2); }
 
+/* ---------------------------------------- người thuê: Phòng của tôi */
+.room-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.room-grid > .span-2 { grid-column: 1 / -1; }
+.room-grid .amount-due { margin-bottom: 0; }
+.room-grid .amount-due .btn { margin-top: var(--space-4); }
+.room-cta { margin-top: var(--space-3); }
+.contract-left { font-size: var(--text-lg); }
+.contract-left .num { font-size: var(--text-xl); font-weight: 600; }
+.contract-left + .meter { margin-top: var(--space-3); }
+.card-b .meter-key { justify-content: space-between; margin-top: var(--space-1); }
+dl.kv.compact { margin-top: var(--space-4); grid-template-columns: 7rem minmax(0, 1fr); }
+.usage-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-8); }
+.usage .label { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs); font-weight: 600; color: var(--color-ink-2); }
+.usage-now { margin-top: var(--space-1); }
+.usage-now .num { font-size: var(--text-xl); font-weight: 600; }
+.ubars { display: flex; align-items: flex-end; gap: var(--space-2); height: 8.5rem; margin-top: var(--space-4); }
+.ucol { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: var(--space-1); }
+/* Cột nằm trong rãnh riêng: % chiều cao tính theo rãnh, không bị co cùng nhãn chữ */
+.utrack { flex: 1 1 auto; min-height: 0; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: var(--space-1); }
+.utrack i { flex-shrink: 0; }   /* tối đa 82% rãnh, phần còn lại cho con số nằm ngay trên đầu cột */
+.ucol i { display: block; width: 100%; max-width: 2.5rem; border-radius: 4px 4px 0 0; background: var(--color-surface-2);
+          transform-origin: 50% 100%; animation: growY 600ms var(--ease-out) both; }
+.ucol.now i { background: var(--color-primary); }
+.uval { font-size: var(--text-xs); color: var(--color-ink-2); }
+.ucol.now .uval { color: var(--color-ink); font-weight: 600; }
+.ulab { font-size: var(--text-xs); color: var(--color-ink-2); }
+@keyframes growY { from { transform: scaleY(0); } }
+.list button.unread .strong { color: var(--color-ink); }
+.list button:not(.unread) .strong { font-weight: 400; }
+.card > .list:first-child > li:first-child { border-top: 0; }
+.inbox .note-body { padding: 0 0 var(--space-4); color: var(--color-ink); }
+@media (max-width: 900px) {
+  .room-grid, .usage-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* ------------------------------------------------- thanh tiến độ */
 .progress { height: var(--space-2); border-radius: 99px; background: var(--color-surface-2); overflow: hidden; margin-bottom: var(--space-2); }
 .progress i { display: block; height: 100%; background: var(--color-primary); width: 0; }
