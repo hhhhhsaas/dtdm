@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#15131c" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/svg+xml" href="/brand/mark.svg?v=1">
 <link rel="preload" href="/fonts/be-vietnam-pro-vietnamese-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/app.css?v=20261024z">
+<link rel="stylesheet" href="/app.css?v=20261025a">
 </head>
 <body>
 
@@ -67,29 +67,48 @@
       </div>
       <p class="login-foot">Quên mật khẩu? Liên hệ chủ trọ để được cấp lại.</p>
     </section>
-    <!-- Mặt tiền dãy trọ lúc chạng vạng: phòng sáng đèn là phòng có người ở. Chỉ để trang trí. -->
+    <!-- Hai dãy trọ lúc chạng vạng, đúng số tầng/phòng của dữ liệu mẫu (Tòa A + phòng trệt A-G01, Tòa B).
+         Phòng sáng đèn là phòng có người thuê. Vẽ cố định: trang đăng nhập chưa có quyền đọc API. -->
     <div class="dusk" aria-hidden="true">
-      <div class="facade">
-        <svg class="roof" viewBox="0 0 240 44" preserveAspectRatio="none"><path d="M6 42 120 6l114 36"/></svg>
-        <div class="floors">
-          <span class="win on d6"><i></i><b>A401</b></span>
-          <span class="win"><i></i><b>A402</b></span>
-          <span class="win on d3 flk"><i></i><b>A403</b></span>
-          <span class="win"><i></i><b>A404</b></span>
-          <span class="win"><i></i><b>A301</b></span>
-          <span class="win on d1"><i></i><b>A302</b></span>
-          <span class="win on d7"><i></i><b>A303</b></span>
-          <span class="win on d4"><i></i><b>A304</b></span>
-          <span class="win on d5"><i></i><b>A201</b></span>
-          <span class="win"><i></i><b>A202</b></span>
-          <span class="win"><i></i><b>A203</b></span>
-          <span class="win on d2 flk"><i></i><b>A204</b></span>
-          <span class="win"><i></i><b>A101</b></span>
-          <span class="win on d8"><i></i><b>A102</b></span>
-          <span class="win on d1"><i></i><b>A103</b></span>
-          <span class="win"><i></i><b>A104</b></span>
+      <div class="town">
+        <div class="bldg annex">
+          <svg class="roof" viewBox="0 0 240 44" preserveAspectRatio="none"><path d="M6 42 120 6l114 36"/></svg>
+          <div class="floors c1">
+            <span class="win on d2"><i></i><b>A-G01</b></span>
+          </div>
+          <div class="gate"></div>
         </div>
-        <div class="gate"><span></span></div>
+        <div class="bldg ta">
+          <svg class="roof" viewBox="0 0 240 44" preserveAspectRatio="none"><path d="M6 42 120 6l114 36"/></svg>
+          <div class="floors c3">
+            <span class="win"><i></i><b>A301</b></span>
+            <span class="win"><i></i><b>A302</b></span>
+            <span class="win"><i></i><b>A303</b></span>
+            <span class="win on d7"><i></i><b>A201</b></span>
+            <span class="win"><i></i><b>A202</b></span>
+            <span class="win"><i></i><b>A203</b></span>
+            <span class="win"><i></i><b>A101</b></span>
+            <span class="win on d5"><i></i><b>A102</b></span>
+            <span class="win on d1 flk"><i></i><b>A103</b></span>
+          </div>
+          <div class="gate"><em>Tòa A</em><span></span></div>
+        </div>
+        <div class="bldg tb">
+          <svg class="roof" viewBox="0 0 240 44" preserveAspectRatio="none"><path d="M6 42 120 6l114 36"/></svg>
+          <div class="floors c5">
+            <span class="win"><i></i><b>B201</b></span>
+            <span class="win"><i></i><b>B202</b></span>
+            <span class="win"><i></i><b>B203</b></span>
+            <span class="win"><i></i><b>B204</b></span>
+            <span class="win"><i></i><b>B205</b></span>
+            <span class="win on d3"><i></i><b>B101</b></span>
+            <span class="win on d6"><i></i><b>B102</b></span>
+            <span class="win on d4 flk"><i></i><b>B103</b></span>
+            <span class="win on d8"><i></i><b>B104</b></span>
+            <span class="win"><i></i><b>B105</b></span>
+          </div>
+          <div class="gate"><em>Tòa B</em><span></span></div>
+        </div>
       </div>
       <div class="street"></div>
     </div>
@@ -109,6 +128,6 @@
 </div>
 <div id="toasts" role="status" aria-live="polite"></div>
 
-<script src="/app.js?v=20261024z" defer></script>
+<script src="/app.js?v=20261025a" defer></script>
 </body>
 </html>
