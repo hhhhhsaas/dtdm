@@ -267,10 +267,8 @@ input[type="number"], .meter-in { font-family: var(--font-num); }
 .login-brand { line-height: 0; }
 .login-brand img { height: 1.5rem; width: auto; }
 .login-form { align-self: center; width: min(22rem, 100%); }
-/* Một cột (điện thoại, tablet dọc): logo, form, dòng chân cùng một trục ở giữa màn hình */
-@media (max-width: 55.99rem) {
-  .login-side > * { justify-self: center; width: min(22rem, 100%); }
-}
+/* Logo, form, dòng chân cùng một trục, nằm giữa cột của chúng (cả một cột lẫn hai nửa) */
+.login-side > * { justify-self: center; width: min(22rem, 100%); }
 .login h1 { font-size: var(--text-xl); line-height: 1.1; letter-spacing: -0.02em; }
 .login-lede { margin: var(--space-2) 0 var(--space-6); color: var(--color-ink-2); font-size: var(--text-md); }
 .login input { padding-block: var(--space-3); font-size: var(--text-md); }
@@ -299,7 +297,7 @@ input[type="number"], .meter-in { font-family: var(--font-num); }
 .dusk::after  { right: 5%; width: 13%; height: 44%; }
 /* Cao toà nhà ≈ 1,55 × rộng → rộng tối đa = (cao khung − đường − lề trên) / 1,6 */
 .facade { position: relative; z-index: 1; container-type: inline-size;
-          width: min(23rem, 62cqw, calc((100cqh - var(--street) - 1.5rem) / 1.6)); }
+          width: min(27rem, 62cqw, calc((100cqh - var(--street) - 1.5rem) / 1.6)); }
 .roof { display: block; width: 104%; height: 19cqi; margin: 0 -2%; overflow: visible;
         fill: none; stroke: #DC493A; stroke-width: clamp(4px, 2.6cqi, 9px); stroke-linejoin: miter;
         vector-effect: non-scaling-stroke; }
