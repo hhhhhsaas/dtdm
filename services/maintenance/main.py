@@ -1123,8 +1123,10 @@ async def resolve_incident(
     if payload.cost is not None:
         incident.cost = payload.cost
     if payload.verified_by:
-        who = payload.verified_by_name or str(payload.verified_by)
-        incident.resolution += f"\n[Đã kiểm tra an toàn] {who}"
+        # ⭐ Người ký = tài khoản đang đăng nhập (từ JWT), KHÔNG phải id/tên
+        #    client khai — nếu không, ai cũng ký được dưới tên người khác và
+        #    "trách nhiệm có tên" mất ý nghĩa. Client chỉ cần báo là có xác nhận.
+        incident.resolution += f"\n[Đã kiểm tra an toàn] {user.username} ({user.id})"
     await session.flush()
 
     room_number = await _room_number(incident.room_id) if incident.room_id else None

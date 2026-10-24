@@ -436,6 +436,8 @@ th .ic { margin-right: var(--space-1); }
 .modal-b { padding: var(--space-6); }
 .modal-f { display: flex; justify-content: flex-end; gap: var(--space-2); padding: var(--space-4) var(--space-6); border-top: var(--rule); }
 .modal-f { flex-wrap: wrap; }
+.note .check { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-3) 0 0; font-size: var(--text-sm); cursor: pointer; }
+.note .check input { width: 1.125rem; height: 1.125rem; accent-color: var(--color-primary-strong); }
 .modal-f .btn.danger { margin-right: auto; }
 .section-t { font-size: var(--text-sm); font-weight: 700; margin: var(--space-6) 0 var(--space-2); }
 

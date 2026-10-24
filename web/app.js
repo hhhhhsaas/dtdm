@@ -1103,6 +1103,10 @@ async function incidentDetail(id, after) {
         ${i.rating ? `<dt>Người thuê đánh giá</dt><dd>${i.rating}/5 ${esc(i.rating_comment || "")}</dd>` : ""}
       </dl>
       ${i.status === "IN_PROGRESS" ? `<div class="section-t">Báo đã xử lý xong</div>
+        ${i.is_safety_critical ? `<div class="note alarm">${ico("alert")}<div>
+          <b>Sự cố nguy hiểm (điện / gas / kết cấu).</b> Phải có người kiểm tra an toàn mới được đánh dấu xong —
+          tên tài khoản của bạn sẽ được ghi vào phiếu làm người xác nhận.
+          <label class="check"><input type="checkbox" name="safe"> Tôi đã kiểm tra an toàn sau khi sửa</label></div></div>` : ""}
         <div class="field narrow"><label for="cost">Chi phí (nếu có)</label><input id="cost" name="cost" type="number" step="1000" min="0"></div>` : ""}
       <div class="acts">
         ${["OPEN", "ASSIGNED"].includes(i.status) ? `<button type="button" class="btn" data-a="start">Bắt đầu xử lý</button>` : ""}
@@ -1114,7 +1118,15 @@ async function incidentDetail(id, after) {
   actsToFooter(m);
   const on = (a, fn) => { const b = $(`[data-a="${a}"]`, m.el); if (b) b.addEventListener("click", fn); };
   on("start", () => call("start", undefined, null));   // trạng thái đổi ngay trong bảng — im lặng
-  on("resolve", () => call("resolve", { cost: val(m.form, "cost") || null }, "Đã đánh dấu xử lý xong."));
+  on("resolve", () => {
+    const body = { cost: val(m.form, "cost") || null };
+    if (i.is_safety_critical) {
+      if (!m.form.elements.safe.checked) return toast("Hãy xác nhận đã kiểm tra an toàn trước khi đánh dấu xong.", "err");
+      // Server ghi người ký theo JWT; id gửi lên chỉ để báo "có xác nhận"
+      body.verified_by = state.user.id;
+    }
+    call("resolve", body, "Đã đánh dấu xử lý xong.");
+  });
   on("close", () => call("close", {}, "Đã đóng phiếu."));
   on("cancel", () => { m.close(); reasonForm("Hủy phiếu sự cố", 3, (r) => must("POST", `/api/v1/incidents/${id}/cancel?` + qs({ reason: r })), "Đã hủy phiếu.", after); });
 }
