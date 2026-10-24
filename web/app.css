@@ -329,7 +329,8 @@ input[type="number"], .meter-in { font-family: var(--font-num); }
 /* Sổ thu tiền: "đã thu / tổng đã lập" bên trái, "còn phải thu" bên phải thanh */
 .collect { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--space-2) var(--space-6); }
 .collect-fig { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); }
-.collect .of-total, .collect .owe { font-family: var(--font-num); font-size: var(--text-lg); font-weight: 600; white-space: nowrap; }
+.collect .big { font-size: 1.875rem; }   /* 40px → 30px */
+.collect .of-total, .collect .owe { font-family: var(--font-num); font-size: 0.9375rem; font-weight: 600; white-space: nowrap; }   /* 20px → 15px */
 .collect .of-total { color: var(--color-ink-2); }
 .collect .owe { color: var(--color-accent); }
 .collect-owe { text-align: right; }
@@ -590,6 +591,7 @@ dl.kv.compact { margin-top: var(--space-4); grid-template-columns: 7rem minmax(0
   dl.kv dd { margin-bottom: var(--space-2); }
   .floor { grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
   .hero-fig .big, .amount-due .big { font-size: var(--text-xl); }
+  .collect .big { font-size: 1.3125rem; }   /* 28px → 21px */
   .card-h, .toolbar, .card-b, .todo-list, .list, .card > .tbl-wrap, .floor { padding-left: var(--space-4); padding-right: var(--space-4); }
   #toasts { bottom: 4.5rem; }
 }
