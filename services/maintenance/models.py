@@ -146,6 +146,10 @@ DONE_STATUSES: frozenset[str] = frozenset({
     IncidentStatus.CLOSED.value,
 })
 
+#: Trạng thái phiếu đã đóng (không còn việc phải làm) — gồm cả phiếu hủy vì báo nhầm.
+#: Dùng cho bộ lọc "chưa xử lý xong" và chặn sửa phiếu; MTTR vẫn chỉ dùng DONE_STATUSES.
+CLOSED_STATUSES: frozenset[str] = DONE_STATUSES | {IncidentStatus.CANCELLED.value}
+
 
 class MaintenanceScope(str, Enum):
     """Phạm vi áp dụng của lịch bảo trì định kỳ."""

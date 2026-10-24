@@ -81,6 +81,7 @@ from common.events import DomainEvent, IdempotentConsumer
 from common.repository import acquire_lock, next_sequence, release_lock
 from common.telemetry import set_business_gauge
 from models import (
+    CLOSED_STATUSES,
     DONE_STATUSES,
     Incident,
     IncidentCategory,
@@ -207,7 +208,7 @@ async def _on_room_status_changed(session: AsyncSession, event: DomainEvent) -> 
         select(Incident).where(
             Incident.room_id == room_id,
             Incident.priority == IncidentPriority.URGENT.value,
-            Incident.status.notin_(DONE_STATUSES),
+            Incident.status.notin_(CLOSED_STATUSES),
             Incident.deleted_at.is_(None),
         )
     )).scalars().all()
@@ -758,7 +759,7 @@ async def list_incidents(
     if assigned_to:
         stmt = stmt.where(Incident.assigned_to == assigned_to)
     if is_open:
-        stmt = stmt.where(Incident.status.notin_(DONE_STATUSES))
+        stmt = stmt.where(Incident.status.notin_(CLOSED_STATUSES))
     if search:
         like = f"%{search}%"
         stmt = stmt.where(
@@ -851,7 +852,7 @@ async def incident_stats(
 
     overdue = sum(
         1 for st, pri, count, *_ in rows
-        if st not in DONE_STATUSES and pri in ("URGENT", "HIGH")
+        if st not in CLOSED_STATUSES and pri in ("URGENT", "HIGH")
     )
 
     stats = IncidentStats(
@@ -1000,7 +1001,7 @@ async def update_incident(
     incident = await _get_incident_or_404(session, incident_id)
     user.assert_property_access(incident.property_id)
 
-    if incident.status in DONE_STATUSES:
+    if incident.status in CLOSED_STATUSES:
         raise BusinessRuleError(
             f"Phiếu {incident.ticket_no} đã {incident.status} nên không sửa được. "
             "Hãy mở lại phiếu trước khi cập nhật."
@@ -1035,7 +1036,7 @@ async def assign_incident(
     incident = await _get_incident_or_404(session, incident_id)
     user.assert_property_access(incident.property_id)
 
-    if incident.status in DONE_STATUSES:
+    if incident.status in CLOSED_STATUSES:
         raise BusinessRuleError(f"Phiếu {incident.ticket_no} đã đóng")
     if incident.status == IncidentStatus.OPEN.value:
         incident.status = IncidentStatus.ASSIGNED.value
@@ -1209,7 +1210,7 @@ async def cancel_incident(
     incident = await _get_incident_or_404(session, incident_id)
     user.assert_property_access(incident.property_id)
 
-    if incident.status in DONE_STATUSES:
+    if incident.status in CLOSED_STATUSES:
         raise BusinessRuleError(f"Phiếu {incident.ticket_no} đã đóng")
     incident.status = IncidentStatus.CANCELLED.value
     incident.resolution = f"[Huỷ] {reason}"
@@ -1285,7 +1286,7 @@ async def upload_incident_photo(
     user.assert_property_access(incident.property_id)
     if user.role is Role.TENANT and incident.reported_by_user_id != user.id:
         raise NotFoundError("Không tìm thấy phiếu sự cố")
-    if incident.status in DONE_STATUSES:
+    if incident.status in CLOSED_STATUSES:
         raise BusinessRuleError(f"Phiếu {incident.ticket_no} đã đóng, không thêm ảnh")
 
     key = await _store_photo(file, incident.property_id)
@@ -1575,7 +1576,7 @@ async def internal_incident_summary(
     for st, cat, _priority, count, cost in rows:
         bucket = by_category.setdefault(cat, {"total": 0, "open": 0})
         bucket["total"] += count
-        if st not in DONE_STATUSES:
+        if st not in CLOSED_STATUSES:
             bucket["open"] += count
         total += count
         total_cost += Decimal(str(cost or 0))
