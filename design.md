@@ -88,9 +88,19 @@ trước nhãn tab, tiêu đề thẻ, nhãn số liệu, nút chính, dòng vi�
 tô màu chứa icon, không icon trang trí ở trạng thái trống.
 
 ## Motion
-- Đổi màu nền/viền 120ms, `--ease-out: cubic-bezier(0.2, 0, 0, 1)`.
-- Không skeleton nhấp nháy, không hover nhấc lên, không animation vào trang.
-- `prefers-reduced-motion`: tắt hết transition.
+Đúng 3 loại chuyển động, mỗi loại trả lời một câu hỏi của người dùng. Không thêm loại thứ tư.
+
+| Loại | Trả lời câu hỏi | Cách làm |
+|---|---|---|
+| A · Số liệu đến nơi | "Đây là dữ liệu vừa tải?" | Số "đã thu" đếm lên 600ms; thanh tiến độ + thanh sổ thu mọc ra (scaleX) một lần |
+| B · Dòng vừa đổi lóe lên | "Thứ tôi vừa làm nằm đâu?" | Sau thao tác, dòng đó nền `select` nhạt dần 900ms + cuộn tới. Thay cho toast thành công |
+| C · Vạch chân trượt | "Tôi vừa chuyển từ đâu sang đâu?" | Một vạch `primary` 2px trượt (translateX + scaleX) 250ms giữa tab / mục lọc |
+
+Kèm: nút lún 1px khi bấm (100ms). Đổi màu hover 120ms.
+- Easing `--ease-out: cubic-bezier(0.2, 0, 0, 1)`. Chỉ transform/opacity (riêng B đổi màu nền một lần).
+- Không: thẻ nhấc lên khi hover, fade-up khi cuộn, skeleton nhấp nháy, chuyển trang trượt, lặp vô hạn.
+- `prefers-reduced-motion`: tắt mọi transition/animation, số hiện ngay giá trị cuối.
+- Bộ lọc là chữ + vạch chân (không dùng rãnh xám + nút nổi kiểu shadcn Tabs).
 
 ## Microinteractions stance
 - Thành công thấy được trên màn hình → im lặng.

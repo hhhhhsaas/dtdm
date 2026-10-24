@@ -317,6 +317,71 @@ function setBadge(tab, n) {
   b.classList.toggle("hidden", !n);
 }
 
+/* ------------------------------------------------------------------------
+   Chuyển động — đúng 3 loại, mỗi loại trả lời một câu hỏi của người dùng
+   (design.md § Motion). Chỉ transform/opacity (+ một lần đổi màu nền), tắt
+   hết khi hệ điều hành bật "giảm chuyển động".
+   ------------------------------------------------------------------------ */
+const reduceMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* C · Vạch chân trượt: "bạn vừa chuyển từ đây sang đây". Một thanh 100px duy
+   nhất, đặt vị trí + độ rộng bằng transform (translateX + scaleX). */
+function moveInk(container, active) {
+  if (!container) return;
+  let ink = container.querySelector(":scope > .ink");
+  const first = !ink;
+  if (first) {
+    ink = document.createElement("i");
+    ink.className = "ink";
+    ink.setAttribute("aria-hidden", "true");
+    container.appendChild(ink);
+  }
+  if (!active) { ink.style.opacity = "0"; return; }
+  if (first) ink.classList.add("no-anim");          // lần đầu đặt thẳng, không trượt từ mép trái
+  ink.style.opacity = "1";
+  ink.style.transform = `translateX(${active.offsetLeft}px) scaleX(${active.offsetWidth / 100})`;
+  if (first) requestAnimationFrame(() => requestAnimationFrame(() => ink.classList.remove("no-anim")));
+}
+const syncInks = (root = document) => {
+  moveInk($("#nav"), $("#nav .tab[aria-current]"));
+  $$(".filter", root).forEach((f) => moveInk(f, $('[aria-pressed="true"]', f)));
+};
+window.addEventListener("resize", debounce(() => syncInks(), 100));
+if (document.fonts) document.fonts.ready.then(() => syncInks());   // font tải xong → chữ đổi độ rộng
+
+/* A · Số liệu đến nơi: số tiền đếm lên một lần (600ms, chậm dần ở cuối) để báo
+   "đây là dữ liệu vừa tải về". Thanh tiến độ mọc ra bằng CSS (@keyframes grow). */
+function countUp(root = document) {
+  $$("[data-count]:not([data-counted])", root).forEach((el) => {
+    el.dataset.counted = "1";
+    const target = num(el.dataset.count);
+    el.setAttribute("aria-label", fmtMoney(target));     // trình đọc màn hình nghe số cuối, không nghe từng nhịp
+    if (reduceMotion() || !target) { el.textContent = fmtMoney(target); return; }
+    const t0 = performance.now(), dur = 600;
+    const step = (t) => {
+      const p = Math.min(1, (t - t0) / dur);
+      el.textContent = fmtMoney(Math.round(target * (1 - (1 - p) ** 3)));
+      if (p < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
+}
+
+/* B · Dòng vừa đổi sáng lên: thao tác xong thì ghi id vào state.flash; lần vẽ
+   bảng / danh sách kế tiếp tìm dòng đó, cho nó lóe một nhịp và cuộn tới nếu
+   khuất. Thay cho toast "Đã lưu" — thành công im lặng nhưng chỉ đúng chỗ. */
+function flashChanged(root) {
+  if (!state.flash || !root) return;
+  const el = root.querySelector(`[data-id="${CSS.escape(state.flash)}"]`);
+  state.flash = null;
+  if (!el) return;
+  el.classList.remove("flash");
+  void el.offsetWidth;                      // khởi động lại animation nếu dòng vừa lóe
+  el.classList.add("flash");
+  el.scrollIntoView({ block: "nearest", behavior: reduceMotion() ? "auto" : "smooth" });
+}
+const afterRender = (root) => { syncInks(root); countUp(root); };
+
 const VIEWS = {};
 function go(tab) {
   if (!allowedTabs().includes(tab)) tab = allowedTabs()[0];
@@ -326,10 +391,11 @@ function go(tab) {
     if (b.dataset.tab === tab) { b.setAttribute("aria-current", "page"); b.scrollIntoView({ block: "nearest", inline: "nearest" }); }
     else b.removeAttribute("aria-current");
   });
+  moveInk($("#nav"), $("#nav .tab[aria-current]"));
   const v = $("#view");
   v.innerHTML = skeleton();
   window.scrollTo(0, 0);
-  VIEWS[tab](v).catch((err) => {
+  VIEWS[tab](v).then(() => afterRender(v)).catch((err) => {
     v.innerHTML = empty("Không tải được dữ liệu", `<div>${esc(err.message)}</div>`);
   });
 }
@@ -345,7 +411,7 @@ function collectBlock(stats, label, { overdueAmt = 0, who = "hóa đơn", extra 
   return `
     <div class="label">${ico("receipt")}${label} · ${s.total_invoices ?? 0} hóa đơn đã lập</div>
     <div class="collect">
-      <div><div class="collect-fig"><span class="big">${fmtMoney(s.total_collected)}</span><span class="of-total">/ ${fmtMoney(s.total_billed)}</span></div>
+      <div><div class="collect-fig"><span class="big" data-count="${num(s.total_collected)}">${fmtMoney(s.total_collected)}</span><span class="of-total">/ ${fmtMoney(s.total_billed)}</span></div>
         <div class="cap">Đã thu / tổng đã lập</div></div>
       <div class="collect-owe"><span class="owe">${fmtMoney(s.total_outstanding)}</span><div class="cap">Còn phải thu</div></div>
     </div>
@@ -364,12 +430,18 @@ const head = (title, lead, actions = "") =>
 const filterBar = (id, key, opts, cur) => `<div class="filter" id="${id}" role="group">${opts.map(([v, label]) =>
   `<button type="button" data-${key}="${v}" aria-pressed="${v === cur}">${label}</button>`).join("")}</div>`;
 /* Dòng bảng mở được bằng chuột và bằng bàn phím (Enter / Space) */
-const rowsOpen = (root, open) => $$("tr[data-id]", root).forEach((tr) => {
-  tr.tabIndex = 0;
-  tr.addEventListener("click", () => open(tr.dataset.id));
-  tr.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(tr.dataset.id); } });
-});
-const markFilter = (id, key, cur) => $$(`#${id} button`).forEach((x) => x.setAttribute("aria-pressed", String(x.dataset[key] === cur)));
+const rowsOpen = (root, open) => {
+  $$("tr[data-id]", root).forEach((tr) => {
+    tr.tabIndex = 0;
+    tr.addEventListener("click", () => open(tr.dataset.id));
+    tr.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(tr.dataset.id); } });
+  });
+  flashChanged(root);
+};
+const markFilter = (id, key, cur) => {
+  $$(`#${id} button`).forEach((x) => x.setAttribute("aria-pressed", String(x.dataset[key] === cur)));
+  moveInk($(`#${id}`), $(`#${id} [aria-pressed="true"]`));
+};
 
 /* ======================================================================
    1. VIỆC CẦN LÀM (chủ trọ / quản lý)
@@ -682,6 +754,7 @@ VIEWS.invoices = async (v) => {
     /* Đếm theo hóa đơn: lọc một kỳ thì mỗi người thuê một hóa đơn → gọi là
        "người thuê"; xem mọi kỳ thì một người có nhiều hóa đơn → gọi "hóa đơn". */
     $("#sum").innerHTML = collectBlock(s, period ? fmtPeriod(period) : "Mọi kỳ", { who: period ? "người thuê" : "hóa đơn" });
+    countUp($("#sum"));
     const list = items(res);
     const owe = (i) => num(i.total_amount) - num(i.paid_amount);
     $("#tbl").innerHTML = list.length ? `<table>
@@ -770,7 +843,8 @@ async function invoiceDetail(id, after) {
       await must("POST", `/api/v1/invoices/${id}/payments`, {
         amount, method: val(form, "method"), receipt_no: val(form, "receipt_no") || null, note: val(form, "note") || null,
       });
-      after && after();   // dòng hóa đơn đổi trạng thái ngay trong bảng — không cần thông báo
+      state.flash = id;   // dòng hóa đơn lóe lên khi bảng vẽ lại — không cần thông báo
+      after && after();
     } : null,
   });
   printButton(m);
@@ -895,14 +969,15 @@ async function newContract(pid, after) {
     submit: "Tạo hợp đồng",
     onSubmit: async (form) => {
       const t = people.find((x) => x.id === val(form, "tenant"));
-      await must("POST", "/api/v1/contracts", {
+      const created = await must("POST", "/api/v1/contracts", {
         property_id: pid, room_id: val(form, "room"), primary_tenant_id: t.id,
         primary_tenant_name: t.full_name, primary_tenant_phone: t.phone, primary_tenant_email: t.email || null,
         start_date: val(form, "start"), end_date: val(form, "end"),
         monthly_price: val(form, "price"), deposit_amount: val(form, "deposit") || "0", room_id_confirmed: true,
       });
-      // Bảng chuyển sang "Đang soạn" nên hợp đồng nháp vừa tạo hiện ngay — không cần thông báo
+      // Bảng chuyển sang "Đang soạn" và dòng hợp đồng nháp vừa tạo lóe lên — không cần thông báo
       state.rooms = null;
+      state.flash = created.id;
       after();
     },
   });
@@ -917,7 +992,7 @@ async function contractDetail(id, after) {
   const rooms = await roomMap();
   const act = (label, cls, fn) => ({ label, cls, fn });
   const acts = [];
-  const run = async (fn, ok) => { try { await fn(); toast(ok); state.rooms = null; m.close(); after(); } catch (e) { toast(e.message, "err"); } };
+  const run = async (fn, ok) => { try { await fn(); toast(ok); state.rooms = null; state.flash = id; m.close(); after(); } catch (e) { toast(e.message, "err"); } };
   if (c.status === "DRAFT") acts.push(act("Gửi người thuê ký", "", () => run(() => must("POST", `/api/v1/contracts/${id}/send`), "Đã chuyển sang chờ ký.")));
   if (["DRAFT", "PENDING_SIGN"].includes(c.status) && !c.deposit_paid_at && num(c.deposit_amount) > 0)
     acts.push(act("Thu tiền cọc", "ghost", () => { m.close(); depositForm(c, after); }));
@@ -956,6 +1031,7 @@ function depositForm(c, after) {
     onSubmit: async (form) => {
       await must("POST", `/api/v1/contracts/${c.id}/deposit`, { amount: val(form, "amount"), method: val(form, "method"), receipt_no: val(form, "receipt_no") || null });
       toast("Đã ghi nhận tiền cọc — mở lại hợp đồng để kích hoạt.");
+      state.flash = c.id;
       after();
     },
   });
@@ -1038,13 +1114,14 @@ function newTenant(pid, after) {
     onSubmit: async (form) => {
       const idc = val(form, "id_card");
       if (idc && !/^(\d{9}|\d{12})$/.test(idc)) throw new Error("Số CCCD phải gồm 12 chữ số (hoặc CMND 9 số).");
-      await must("POST", "/api/v1/tenants", {
+      const created = await must("POST", "/api/v1/tenants", {
         property_id: pid, full_name: val(form, "full_name"), phone: val(form, "phone"),
         id_card_number: idc || null, date_of_birth: val(form, "dob") || null, gender: val(form, "gender") || null,
         email: val(form, "email") || null, occupation: val(form, "occupation") || null, address: val(form, "address") || null,
         emergency_contact_name: val(form, "ec_name") || null, emergency_contact_phone: val(form, "ec_phone") || null,
       });
-      after();   // người mới hiện ngay trong bảng — không cần thông báo
+      state.flash = created.id;
+      after();   // người mới hiện ngay trong bảng và lóe lên — không cần thông báo
     },
   });
 }
@@ -1087,7 +1164,7 @@ async function incidentDetail(id, after) {
   const call = async (path, body, ok) => {
     const btns = $$("[data-a]", m.el);
     btns.forEach((b) => { b.disabled = true; });   // chống bấm nhiều lần gửi nhiều request
-    try { await must("POST", `/api/v1/incidents/${id}/${path}`, body); if (ok) toast(ok); m.close(); after(); }
+    try { await must("POST", `/api/v1/incidents/${id}/${path}`, body); if (ok) toast(ok); state.flash = id; m.close(); after(); }
     catch (e) { toast(e.message, "err"); btns.forEach((b) => { b.disabled = false; }); }
   };
   const isOpen = !["RESOLVED", "CLOSED", "CANCELLED"].includes(i.status);
@@ -1190,6 +1267,7 @@ VIEWS["my-incidents"] = async (v) => {
         ${pill(LABEL.incident, i.status)}</button></li>`).join("")}</ul>`
       : empty("Bạn chưa báo sự cố nào", "Có gì hỏng trong phòng, bấm “Báo sự cố mới”.");
     $$(".list button[data-id]", $("#list")).forEach((el) => el.addEventListener("click", () => myIncident(el.dataset.id, load)));
+    flashChanged($("#list"));
   };
   $("#new").addEventListener("click", () => modal({
     title: "Báo sự cố mới",
@@ -1203,12 +1281,13 @@ VIEWS["my-incidents"] = async (v) => {
     submit: "Gửi báo cáo",
     onSubmit: async (form) => {
       if (val(form, "title").length < 3) throw new Error("Vui lòng mô tả vấn đề (ít nhất 3 ký tự).");
-      await must("POST", "/api/v1/incidents", {
+      const created = await must("POST", "/api/v1/incidents", {
         title: val(form, "title"), category: val(form, "category"), priority: val(form, "priority"),
         description: val(form, "description") || null, room_id: state.myRoom ? state.myRoom.id : null,
         reported_by_phone: state.user.phone || null,
       });
-      load();   // phiếu mới hiện ngay đầu danh sách — không cần thông báo
+      state.flash = created.id;
+      load();   // phiếu mới hiện ngay đầu danh sách và lóe lên — không cần thông báo
     },
   }));
   await load();
@@ -1232,6 +1311,7 @@ async function myIncident(id, after) {
     submit: canRate ? "Gửi đánh giá" : null,
     onSubmit: canRate ? async (form) => {
       await must("POST", `/api/v1/incidents/${id}/rating`, { rating: Number(val(form, "rating")), comment: val(form, "comment") || null });
+      state.flash = id;
       after();
     } : null,
   });
