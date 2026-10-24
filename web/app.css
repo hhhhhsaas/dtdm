@@ -486,7 +486,9 @@ th .ic { margin-right: var(--space-1); }
             margin: var(--space-3) 0; border: 1px dashed var(--color-ink-2); border-radius: var(--radius); background: var(--color-surface-2); }
 
 /* ---------------------------------------- người thuê: Phòng của tôi */
-.room-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.room-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-4); align-items: stretch; }
+.room-grid > .card { margin-bottom: 0; display: flex; flex-direction: column; }
+.room-grid .amount-due .btn { align-self: flex-start; }
 .room-grid > .span-2 { grid-column: 1 / -1; }
 .room-grid .amount-due { margin-bottom: 0; }
 .room-grid .amount-due .btn { margin-top: var(--space-4); }
@@ -500,18 +502,19 @@ dl.kv.compact { margin-top: var(--space-4); grid-template-columns: 7rem minmax(0
 .usage .label { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs); font-weight: 600; color: var(--color-ink-2); }
 .usage-now { margin-top: var(--space-1); }
 .usage-now .num { font-size: var(--text-xl); font-weight: 600; }
-.ubars { display: flex; align-items: flex-end; gap: var(--space-2); height: 8.5rem; margin-top: var(--space-4); }
-.ucol { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: var(--space-1); }
-/* Cột nằm trong rãnh riêng: % chiều cao tính theo rãnh, không bị co cùng nhãn chữ */
-.utrack { flex: 1 1 auto; min-height: 0; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: var(--space-1); }
-.utrack i { flex-shrink: 0; }   /* tối đa 82% rãnh, phần còn lại cho con số nằm ngay trên đầu cột */
-.ucol i { display: block; width: 100%; max-width: 2.5rem; border-radius: 4px 4px 0 0; background: var(--color-surface-2);
-          transform-origin: 50% 100%; animation: growY 600ms var(--ease-out) both; }
-.ucol.now i { background: var(--color-primary); }
-.uval { font-size: var(--text-xs); color: var(--color-ink-2); }
-.ucol.now .uval { color: var(--color-ink); font-weight: 600; }
-.ulab { font-size: var(--text-xs); color: var(--color-ink-2); }
-@keyframes growY { from { transform: scaleY(0); } }
+/* Biểu đồ đường điện / nước (SVG). Màu lấy từ token. */
+.uline { display: block; width: 100%; height: auto; margin-top: var(--space-3); overflow: visible; }
+.uline .base { stroke: var(--color-rule); stroke-width: 1; }
+.uline .area { fill: var(--color-primary); opacity: 0.1; }
+.uline .stroke { fill: none; stroke: var(--color-primary); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round;
+                 stroke-dasharray: 1; stroke-dashoffset: 0; animation: draw 700ms var(--ease-out) both; }
+.uline .pt { fill: var(--color-surface); stroke: var(--color-primary); stroke-width: 2; }
+.uline .pt.now { fill: var(--color-primary); }
+.uline text { font-family: var(--font-num); font-size: 10px; text-anchor: middle; fill: var(--color-ink-2); }
+.uline text.v.now { fill: var(--color-ink); font-weight: 600; }
+.uline .area, .uline .pt, .uline text.v { animation: fadeIn 400ms 300ms var(--ease-out) both; }
+@keyframes draw { from { stroke-dashoffset: 1; } }
+@keyframes fadeIn { from { opacity: 0; } }
 .list button.unread .strong { color: var(--color-ink); }
 .list button:not(.unread) .strong { font-weight: 400; }
 .card > .list:first-child > li:first-child { border-top: 0; }

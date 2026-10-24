@@ -1246,7 +1246,6 @@ function usageSeries(invoices, type) {
 function usageCard(series, label, unit, icon) {
   if (!series.length) return `<div class="usage"><div class="label">${ico(icon, "sm")}${label}</div><div class="sub">Chưa có số liệu.</div></div>`;
   const last = series[series.length - 1], prev = series[series.length - 2];
-  const max = Math.max(...series.map((x) => x.qty), 1);
   const diff = prev && prev.qty ? Math.round(((last.qty - prev.qty) / prev.qty) * 100) : null;
   const trend = diff === null ? "" : diff > 0
     ? `<span class="warn-t">tăng ${diff}% so với ${fmtPeriod(prev.period).toLowerCase()}</span>`
@@ -1256,11 +1255,33 @@ function usageCard(series, label, unit, icon) {
     <div class="label">${ico(icon, "sm")}${label}</div>
     <div class="usage-now"><span class="num">${fmtQty(last.qty)}</span> ${unit} <span class="sub">· ${fmtPeriod(last.period).toLowerCase()}</span></div>
     <div class="small">${trend}</div>
-    <div class="ubars" role="img" aria-label="${label} ${series.length} kỳ gần nhất: ${series.map((x) => `${fmtPeriod(x.period)} ${fmtQty(x.qty)} ${unit}`).join(", ")}">
-      ${series.map((x, k) => `<div class="ucol ${k === series.length - 1 ? "now" : ""}">
-        <span class="utrack"><span class="uval num">${fmtQty(x.qty)}</span><i style="height:${Math.max(4, (x.qty / max) * 82)}%"></i></span>
-        <span class="ulab">T${Number(x.period.slice(5, 7))}</span></div>`).join("")}
-    </div></div>`;
+    ${usageLine(series, `${label} ${series.length} kỳ gần nhất: ${series.map((x) => `${fmtPeriod(x.period)} ${fmtQty(x.qty)} ${unit}`).join(", ")}`)}
+  </div>`;
+}
+
+/* Biểu đồ đường SVG tự vẽ (không thư viện — CSP chỉ cho script cùng nguồn).
+   Trục dọc không bắt đầu từ 0 mà ôm sát khoảng giá trị: thứ người thuê cần thấy
+   là XU HƯỚNG lên/xuống giữa các tháng. Đường vẽ dần một lần (pathLength=1). */
+function usageLine(series, aria) {
+  const W = 320, H = 140, L = 18, R = 18, T = 26, B = 24;
+  const vals = series.map((x) => x.qty);
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  const span = hi - lo || Math.max(hi, 1);          // mọi tháng bằng nhau → đường nằm giữa
+  const pad = span * 0.25;
+  const x = (k) => series.length === 1 ? W / 2 : L + (k * (W - L - R)) / (series.length - 1);
+  const y = (v) => T + (1 - (v - (lo - pad)) / (span + 2 * pad)) * (H - T - B);
+  const pts = series.map((p, k) => [x(k), y(p.qty)]);
+  const line = pts.map(([px, py], k) => `${k ? "L" : "M"}${px.toFixed(1)},${py.toFixed(1)}`).join(" ");
+  const area = `${line} L${pts[pts.length - 1][0].toFixed(1)},${H - B} L${pts[0][0].toFixed(1)},${H - B} Z`;
+  const now = series.length - 1;
+  return `<svg class="uline" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(aria)}">
+    <line class="base" x1="${L}" x2="${W - R}" y1="${H - B}" y2="${H - B}"/>
+    <path class="area" d="${area}"/>
+    <path class="stroke" d="${line}" pathLength="1"/>
+    ${pts.map(([px, py], k) => `<circle class="${k === now ? "pt now" : "pt"}" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${k === now ? 4.5 : 3}"/>
+      <text class="${k === now ? "v now" : "v"}" x="${px.toFixed(1)}" y="${(py - 9).toFixed(1)}">${fmtQty(series[k].qty)}</text>
+      <text class="m" x="${px.toFixed(1)}" y="${H - 6}">T${Number(series[k].period.slice(5, 7))}</text>`).join("")}
+  </svg>`;
 }
 
 VIEWS.room = async (v) => {
