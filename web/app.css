@@ -318,7 +318,8 @@ input[type="number"], .meter-in { font-family: var(--font-num); }
 .narrow-page { max-width: 40rem; }
 
 /* ------------------------------------------------------- trang chủ */
-.overview { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr); gap: var(--space-4); margin-bottom: var(--space-6); }
+/* Cùng tỉ lệ cột với .home-grid bên dưới → thẻ tiền thẳng mép "Việc cần làm", 4 ô thẳng mép "Sổ thu" */
+.overview { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: var(--space-4); margin-bottom: var(--space-6); }
 .hero-fig { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-2); }
 .hero-fig .label { display: flex; align-items: center; gap: var(--space-2); color: var(--color-ink-2); font-weight: 600; }
 .hero-fig .big { font-family: var(--font-num); font-size: var(--text-2xl); font-weight: 600; line-height: 1.1; letter-spacing: -0.02em; }
@@ -345,7 +346,7 @@ input[type="number"], .meter-in { font-family: var(--font-num); }
 .meter-key { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-5); font-size: var(--text-xs); color: var(--color-ink-2); }
 .meter-key b { font-family: var(--font-num); color: var(--color-ink); font-weight: 600; }
 .meter-key .sw { display: inline-block; width: 0.625rem; height: 0.625rem; border-radius: 2px; margin-right: var(--space-1); vertical-align: -1px; }
-.stats { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-4); }
+.stats { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-auto-rows: 1fr; gap: var(--space-4); }
 .stat { padding: var(--space-4) var(--space-5); }
 .stat .label { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs); color: var(--color-ink-2); font-weight: 600; }
 .stat .v { font-family: var(--font-num); font-size: var(--text-lg); font-weight: 600; margin-top: var(--space-2); }
