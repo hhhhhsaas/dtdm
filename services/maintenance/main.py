@@ -1216,10 +1216,25 @@ async def cancel_incident(
     incident.closed_at = datetime.now(UTC)
     await session.flush()
 
-    record_business_event(settings.service_name, "incident.cancelled")
-    return _to_response(
-        incident, await _room_number(incident.room_id) if incident.room_id else None
+    # ⭐ Giữ trạng thái CANCELLED (không phải RESOLVED): báo nhầm thì không có ai
+    #    sửa gì — tính vào RESOLVED sẽ làm sai thời gian xử lý trung bình, chi phí
+    #    và điểm hài lòng. Nhưng người thuê vẫn phải được báo là phiếu đã đóng.
+    room_number = await _room_number(incident.room_id) if incident.room_id else None
+    await _publish_event(
+        session, "incident.cancelled",
+        {
+            "incident_id": str(incident.id),
+            "ticket_no": incident.ticket_no,
+            "property_id": str(incident.property_id),
+            "room_id": str(incident.room_id) if incident.room_id else None,
+            "room_number": room_number or "—",
+            "title": incident.title,
+            "reason": reason,
+            "tenant_id": str(incident.reported_by_tenant_id) if incident.reported_by_tenant_id else None,
+        },
     )
+    record_business_event(settings.service_name, "incident.cancelled")
+    return _to_response(incident, room_number)
 
 
 @incident_router.post("/{incident_id}/rating", response_model=IncidentResponse,

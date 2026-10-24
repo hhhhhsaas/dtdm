@@ -317,6 +317,18 @@ DEFAULT_TEMPLATES: list[dict[str, Any]] = [
         "description": "Gửi cho người thuê đã báo sự cố khi phiếu được xử lý xong (event incident.resolved).",
     },
     {
+        "code": "INCIDENT_CANCELLED",
+        "channel": Channel.IN_APP.value,
+        "name": "Phiếu sự cố của bạn đã được đóng",
+        "subject": "Phiếu {{ ticket_no }} đã được đóng",
+        "body": (
+            "Phiếu sự cố \"{{ title }}\" tại phòng {{ room_number }} đã được ban quản lý đóng.\n"
+            "Lý do: {{ reason }}\n"
+            "\nNếu sự cố vẫn còn, bạn báo lại một phiếu mới trong mục Sự cố.\n"
+        ),
+        "description": "Gửi cho người thuê khi quản lý hủy phiếu họ báo (event incident.cancelled).",
+    },
+    {
         "code": "ROOM_STATUS_CHANGED",
         "channel": Channel.IN_APP.value,
         "name": "Phòng đổi trạng thái",
@@ -364,6 +376,7 @@ SUBSCRIBED_EVENTS: list[str] = [
     "incident.escalated",
     "incident.urgent",
     "incident.resolved",
+    "incident.cancelled",
     "room.status_changed",
 ]
 
@@ -373,6 +386,7 @@ SUBSCRIBED_EVENTS: list[str] = [
 #:    tiền cọc". Lọc theo tenant_id thôi thì người thuê đọc được thư nội bộ.
 TENANT_FACING_TEMPLATES: frozenset[str] = frozenset({
     "INVOICE_ISSUED", "INVOICE_OVERDUE", "CONTRACT_EXPIRING", "INCIDENT_RESOLVED",
+    "INCIDENT_CANCELLED",
 })
 
 
@@ -1368,6 +1382,7 @@ async def _handle_event(event: DomainEvent) -> None:
         "incident.urgent": _on_incident_urgent,
         "incident.escalated": _on_incident_urgent,
         "incident.resolved": _on_incident_resolved,
+        "incident.cancelled": _on_incident_cancelled,
         "room.status_changed": _on_room_status_changed,
     }.get(event.event_type)
 
@@ -1627,6 +1642,29 @@ async def _on_incident_resolved(session: AsyncSession, event: DomainEvent) -> No
         tenant_id=tenant_id,
         priority=Priority.NORMAL.value,
         dedupe_key=f"INCIDENT_RESOLVED:{ticket_no}",
+    )
+
+
+async def _on_incident_cancelled(session: AsyncSession, event: DomainEvent) -> None:
+    """Quản lý hủy phiếu (báo nhầm) → báo người thuê đã báo phiếu đó, kèm lý do."""
+    data = event.data
+    tenant_id = _uuid_or_none(data.get("tenant_id"))
+    if tenant_id is None:
+        return          # phiếu do quản lý tự ghi — không có người thuê để báo
+    ticket_no = str(data.get("ticket_no") or "")
+    await _enqueue(
+        session,
+        template_code="INCIDENT_CANCELLED",
+        context={
+            "ticket_no": ticket_no,
+            "title": data.get("title") or "",
+            "room_number": data.get("room_number") or "—",
+            "reason": data.get("reason") or "không ghi lý do",
+        },
+        property_id=_uuid_or_none(data.get("property_id")),
+        tenant_id=tenant_id,
+        priority=Priority.NORMAL.value,
+        dedupe_key=f"INCIDENT_CANCELLED:{ticket_no}",
     )
 
 
