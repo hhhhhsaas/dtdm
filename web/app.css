@@ -263,6 +263,13 @@ input[type="number"], .meter-in { font-family: var(--font-num); }
 .login .card { width: min(24rem, 100%); padding: var(--space-8); }
 .login-logo { display: block; width: 6.5rem; height: auto; margin: 0 auto var(--space-6); }
 .login h1 { font-size: var(--text-xl); margin-bottom: var(--space-6); text-align: center; }
+.pw { position: relative; }
+.pw input { padding-right: 2.75rem; }
+.pw input::-ms-reveal { display: none; }   /* Edge tự thêm con mắt riêng — chỉ giữ nút của mình */
+.pw-toggle { position: absolute; top: 50%; right: var(--space-1); transform: translateY(-50%);
+             display: grid; place-items: center; width: 2.25rem; height: 2.25rem; padding: 0;
+             border: 0; border-radius: var(--radius); background: none; color: var(--color-ink-2); cursor: pointer; }
+.pw-toggle:hover { color: var(--color-ink); background: var(--color-select); }
 .err { color: var(--color-accent); font-size: var(--text-sm); margin-top: var(--space-3); min-height: 1.4em; }
 .demo { margin-top: var(--space-6); padding-top: var(--space-4); border-top: var(--rule); font-size: var(--text-xs); }
 .demo p { margin-bottom: var(--space-2); color: var(--color-ink-2); }

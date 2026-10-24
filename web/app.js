@@ -217,8 +217,17 @@ function modal({ title, body, submit, onSubmit, wide = false, danger = false, ca
 const val = (form, name) => { const el = form.elements[name]; return el ? el.value.trim() : ""; };
 
 /* ------------------------------ Đăng nhập ----------------------------- */
+$("#pw-toggle").addEventListener("click", (e) => {
+  const btn = e.currentTarget, input = $("#p"), show = input.type === "password";
+  input.type = show ? "text" : "password";
+  btn.setAttribute("aria-pressed", show);
+  btn.setAttribute("aria-label", show ? "Ẩn mật khẩu" : "Hiện mật khẩu");
+  btn.querySelector("use").setAttribute("href", show ? "#i-eye-off" : "#i-eye");
+  input.focus();
+});
 $("#login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
+  if ($("#p").type === "text") $("#pw-toggle").click();   // ẩn lại trước khi gửi: trình duyệt mới đề nghị lưu mật khẩu
   const btn = $("#login-btn");
   btn.disabled = true; btn.textContent = "Đang đăng nhập…";
   $("#login-err").textContent = "";
