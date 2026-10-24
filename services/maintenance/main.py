@@ -737,7 +737,7 @@ async def list_incidents(
     assigned_to: uuid.UUID | None = None,
     is_open: bool | None = Query(None, description="True = chỉ phiếu chưa xử lý xong"),
     search: str | None = Query(None, description="Tìm theo mã phiếu hoặc tiêu đề"),
-    sort: str = "created_at_desc",
+    sort: str = "created_desc",
 ) -> dict:
     effective = _resolve_property(user, property_id)
 

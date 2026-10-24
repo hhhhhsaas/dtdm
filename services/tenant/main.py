@@ -186,7 +186,7 @@ async def list_tenants(
     is_active: bool | None = None,
     risk_level: str | None = None,
     search: str | None = Query(None, description="Tìm theo tên, số điện thoại hoặc email"),
-    sort: str = "full_name_asc",
+    sort: str = "name_asc",
 ) -> dict:
     effective = await _resolve_property_id(user, property_id)
 
