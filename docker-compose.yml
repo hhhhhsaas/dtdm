@@ -563,6 +563,16 @@ services:
       GF_INSTALL_PLUGINS: ""
       GF_SERVER_ROOT_URL: https://${DOMAIN:-qlpt.local}
       GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      # Grafana chỉ nói chuyện với Prometheus trong mạng nội bộ, không cần ra
+      # internet. Docker daemon có cấu hình proxy (VM trong OpenStack phải đi
+      # qua tinyproxy) sẽ bơm http_proxy vào container → request tới
+      # prometheus:9090 / 127.0.0.1 bị đẩy sang proxy và trả 500.
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      http_proxy: ""
+      https_proxy: ""
     secrets: [admin_password]
     volumes:
       - grafana_data:/var/lib/grafana
@@ -572,7 +582,8 @@ services:
     ports: ["3000:3000"]     # public nhưng có đăng nhập
     deploy: { resources: { limits: { cpus: "0.25", memory: 256M } } }
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      # -Y off: wget của BusyBox không đọc no_proxy → tắt proxy tường minh.
+      test: ["CMD-SHELL", "wget -Y off -qO- http://127.0.0.1:3000/api/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

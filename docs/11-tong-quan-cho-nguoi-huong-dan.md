@@ -403,6 +403,7 @@ ssh -N -L 3000:127.0.0.1:13000 host@192.168.88.128
 | 7 | Container RabbitMQ báo `unhealthy` dù broker chạy ổn | `rabbitmq-diagnostics` khởi động thêm 1 VM Erlang mới, vượt timeout khi CPU bị giới hạn | Tăng `timeout`/`start_period` cho healthcheck |
 | 8 | Container luôn `unhealthy` vì thiếu `/health` | Docker healthcheck bắt buộc endpoint; scheduler ban đầu không có HTTP | Scheduler thêm app HTTP nhỏ với `/health` + `/metrics` |
 | 9 | Dependency có lỗ hổng **CRITICAL** | `PyJWT 2.10.1` (CVE-2026-102268) | Nâng `PyJWT 2.14.0` + `python-multipart 0.0.30`, **build lại toàn bộ image**, verify lại 26/26 |
+| 10 | Grafana luôn `unhealthy` dù giao diện vẫn chạy | Docker trên VM cấu hình proxy (tinyproxy) và bơm `http_proxy` vào container; `wget` BusyBox không đọc `no_proxy` → healthcheck gọi `127.0.0.1:3000` lại đi qua proxy, nhận `500 Unable to connect` của tinyproxy | Healthcheck dùng `wget -Y off`; xóa biến proxy cho Grafana (nó chỉ cần gọi Prometheus nội bộ) |
 
 ### 10.1. Rà soát database & bảo mật (10/2026)
 
