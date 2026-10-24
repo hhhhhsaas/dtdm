@@ -258,11 +258,65 @@ input[type="number"], .meter-in { font-family: var(--font-num); }
 .sw.m-ok { background: var(--color-primary); }
 .sw.m-due { background: var(--color-accent-fill); }
 
-/* --------------------------------------------------------------- login */
-.login { display: grid; place-items: center; min-height: 100vh; padding: var(--space-6) var(--space-4); }
-.login .card { width: min(24rem, 100%); padding: var(--space-8); }
-.login-logo { display: block; width: 6.5rem; height: auto; margin-bottom: var(--space-6); }
-.login h1 { font-size: var(--text-xl); margin-bottom: var(--space-6); }
+/* --------------------------------------------------------------- login
+   Trái: form trên nền giấy. Phải: mặt tiền dãy trọ lúc chạng vạng (cùng màu ở cả hai theme —
+   đây là một bức tranh, không phải bề mặt UI). Đèn bật dần một lần khi mở trang. */
+.login { display: grid; grid-template-columns: minmax(0, 1fr); min-height: 100vh; }
+.login-side { display: grid; grid-template-rows: auto 1fr auto; gap: var(--space-8);
+              padding: var(--space-8) var(--space-6); }
+.login-brand { line-height: 0; }
+.login-brand img { height: 1.5rem; width: auto; }
+.login-form { align-self: center; width: min(22rem, 100%); }
+.login h1 { font-size: var(--text-2xl); line-height: 1.1; letter-spacing: -0.02em; }
+.login-lede { margin: var(--space-2) 0 var(--space-8); color: var(--color-ink-2); font-size: var(--text-md); }
+.login input { padding-block: var(--space-3); font-size: var(--text-md); }
+
+.dusk { display: none; }
+@media (min-width: 56rem) {
+  .login { grid-template-columns: minmax(26rem, 1fr) minmax(0, 1.15fr); }
+  .login-side { padding: var(--space-12) clamp(var(--space-8), 6vw, 6rem); }
+  .dusk {
+    display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+    position: relative; overflow: hidden; margin: var(--space-4); border-radius: 14px;
+    background: linear-gradient(oklch(24% 0.05 285), oklch(31% 0.07 262) 70%, oklch(36% 0.07 250));
+  }
+}
+.dusk::before, .dusk::after { content: ""; position: absolute; bottom: 3.5rem;   /* nhà hàng xóm, tắt đèn */
+                               background: oklch(25% 0.04 272); border-radius: 2px 2px 0 0; }
+.dusk::before { left: 4%; width: 17%; height: 30%; }
+.dusk::after  { right: 5%; width: 13%; height: 44%; }
+.facade { position: relative; z-index: 1; width: min(23rem, 62%); }
+.roof { display: block; width: 104%; height: 3.25rem; margin: 0 -2%; overflow: visible;
+        fill: none; stroke: #DC493A; stroke-width: 9; stroke-linejoin: miter; vector-effect: non-scaling-stroke; }
+.floors { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.5rem 1.25rem;
+          padding: 1.5rem 1.4rem 1.75rem; background: oklch(27% 0.025 285);
+          border: 1px solid oklch(34% 0.025 285); border-bottom: 0; }
+.win { display: grid; gap: 0.4rem; justify-items: center; }
+.win i { display: block; width: 100%; aspect-ratio: 1; border-radius: 3px; position: relative;
+         background: oklch(20% 0.03 280); border: 1px solid oklch(36% 0.025 285); }
+.win i::after { content: ""; position: absolute; inset: 0 auto 0 50%; width: 1px;   /* song cửa sổ */
+                background: oklch(36% 0.025 285); }
+.win b { font: 400 0.6875rem/1 var(--font-num); color: oklch(62% 0.02 280); letter-spacing: 0.02em; }
+.win.on i { background: linear-gradient(oklch(90% 0.08 88), oklch(80% 0.13 72)); border-color: oklch(90% 0.09 85);
+            box-shadow: 0 0 1.25rem oklch(82% 0.13 78 / 0.45); }
+.win.on i::after { background: oklch(72% 0.09 70); }
+.win.on b { color: oklch(84% 0.05 85); }
+.gate { display: flex; justify-content: center; height: 2.5rem; background: oklch(27% 0.025 285);
+        border-inline: 1px solid oklch(34% 0.025 285); }
+.gate span { width: 3.25rem; border-radius: 3px 3px 0 0; background: oklch(18% 0.03 280);
+             box-shadow: inset 0 3px 0 #DC493A; }
+.street { position: relative; z-index: 1; width: 100%; height: 3.5rem; background: oklch(20% 0.03 280); border-top: 1px solid oklch(38% 0.03 280); }
+
+/* Đèn bật dần: chỉ một lần khi mở trang; giảm chuyển động → đèn sáng sẵn (trạng thái gốc là "on") */
+@keyframes lightOn { from { background: oklch(20% 0.03 280); border-color: oklch(36% 0.025 285); box-shadow: none; } }
+@keyframes flicker { 0%, 30%, 52% { background: oklch(20% 0.03 280); box-shadow: none; }
+                     38%, 64% { background: oklch(86% 0.11 82); } }
+.win.on i { animation: lightOn 420ms var(--ease-out) both; }
+.win.on.flk i { animation-name: flicker; animation-duration: 900ms; }
+.win.d1 i { animation-delay: 350ms; }  .win.d2 i { animation-delay: 520ms; }
+.win.d3 i { animation-delay: 690ms; }  .win.d4 i { animation-delay: 860ms; }
+.win.d5 i { animation-delay: 1030ms; } .win.d6 i { animation-delay: 1200ms; }
+.win.d7 i { animation-delay: 1370ms; } .win.d8 i { animation-delay: 1540ms; }
 .err { color: var(--color-accent); font-size: var(--text-sm); margin-top: var(--space-3); min-height: 1.4em; }
 .demo { margin-top: var(--space-6); padding-top: var(--space-4); border-top: var(--rule); font-size: var(--text-xs); }
 .demo p { margin-bottom: var(--space-2); color: var(--color-ink-2); }
