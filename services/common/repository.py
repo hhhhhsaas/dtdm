@@ -13,7 +13,7 @@ import uuid
 from collections.abc import Sequence
 from typing import Any, Literal, TypeVar
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .schemas import PageMeta, PageParams
@@ -156,17 +156,26 @@ async def next_sequence(
     """
     Sinh số thứ tự tiếp theo trong phạm vi (VD: mã hóa đơn theo tháng).
 
-    Cách này dùng `SELECT max(...) ... FOR UPDATE` trên bản ghi hiện có.
-    Rủi ro tranh chấp ở mức 1 hàng/khoá là chấp nhận được cho bài toán này
-    (vài trăm hóa đơn/kỳ). Nếu lên tới hàng nghìn giao dịch/giây thì phải
-    chuyển sang PostgreSQL SEQUENCE hoặc bảng đếm riêng theo shard.
+    `column` là MÃ dạng chữ (`SC-2026-0042`, `HD-202610-0042`) → lấy cụm số ở
+    cuối mã rồi mới MAX + gap. (Bản trước làm `MAX(mã) + 1` trên chuỗi, kèm
+    `FOR UPDATE` — PostgreSQL không cho FOR UPDATE đi với hàm gộp — và truyền
+    SQL dạng chuỗi trần mà SQLAlchemy 2 từ chối: chưa lần nào chạy được.)
+
+    ⭐ Chống 2 request cùng lúc ra cùng số: khoá tư vấn `pg_advisory_xact_lock`
+       theo bảng + phạm vi, giữ tới khi transaction commit. Request thứ hai chờ
+       và đọc thấy số request đầu đã ghi. UNIQUE trên cột mã vẫn là hàng rào cuối.
+       Nếu lên tới hàng nghìn giao dịch/giây thì chuyển sang SEQUENCE riêng.
+
+    `table`, `column`, `scope_where` là hằng trong code (không phải dữ liệu
+    người dùng) nên ghép vào SQL được; giá trị thì luôn đi qua tham số `:x`.
     """
-    sql = f"""
-        SELECT COALESCE(MAX({column}), 0) + :gap
+    lock_key = f"{table}:{column}:" + ":".join(f"{k}={v}" for k, v in sorted(scope_params.items()))
+    await session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": lock_key})
+    sql = text(f"""
+        SELECT COALESCE(MAX(CAST(substring({column} from '([0-9]+)$') AS integer)), 0) + :gap
         FROM {table}
         WHERE {scope_where}
-        FOR UPDATE
-    """
+    """)
     value = (await session.execute(sql, {"gap": gap, **scope_params})).scalar()
     return int(value or gap)
 

@@ -92,7 +92,14 @@ function toast(msg, type = "ok") {
 /* ------------------------------ API core ------------------------------ */
 const apiErr = (res) => {
   const d = res.data || {};
-  if (d.error && d.error.message) return d.error.message;
+  if (d.error && d.error.message) {
+    /* 422: nói rõ trường nào sai; 5xx: kèm mã lỗi (request_id) để tra log —
+       thông báo lỗi hệ thống tự nó đã bảo "cung cấp mã lỗi cho quản trị viên". */
+    const fields = (d.error.details && d.error.details.fields) || [];
+    const what = fields.map((f) => `${f.field}: ${f.problem}`).join("; ");
+    const id = res.status >= 500 && d.request_id ? ` (mã lỗi: ${d.request_id})` : "";
+    return d.error.message + (what ? ` — ${what}` : "") + id;
+  }
   if (Array.isArray(d.detail)) return d.detail.map((x) => x.msg).join("; ");
   return d.detail || ("Lỗi máy chủ (" + res.status + ")");
 };
