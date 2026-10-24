@@ -777,6 +777,19 @@ async function invoiceDetail(id, after) {
 }
 
 /* Nút "In biên lai" cạnh nút Đóng — in chỉ phần .receipt (xem @media print) */
+/* Đưa các nút thao tác (.acts trong thân hộp thoại) xuống chân hộp thoại:
+   nút chính nằm bên phải "Đóng" (chỗ mắt tìm hành động), nút nguy hiểm
+   (hủy / chấm dứt) dạt sang mép trái để khó bấm nhầm. */
+function actsToFooter(m) {
+  const acts = $(".modal-b .acts", m.el);
+  if (!acts) return;
+  const f = $(".modal-f", m.el);
+  $$("button", acts).forEach((b) => {
+    if (b.classList.contains("danger")) f.prepend(b); else f.append(b);
+  });
+  acts.remove();
+}
+
 function printButton(m) {
   const f = $(".modal-f", m.el);
   f.insertAdjacentHTML("afterbegin", `<button type="button" class="btn ghost" data-print>${ico("printer", "sm")}In biên lai</button>`);
@@ -930,6 +943,7 @@ async function contractDetail(id, after) {
         `<button type="button" class="btn ${a.cls}" data-act="${i}">${a.label}</button>`).join("")}</div>` : ""}`,
   });
   $$("[data-act]", m.el).forEach((b) => b.addEventListener("click", () => acts[b.dataset.act].fn()));
+  actsToFooter(m);
 }
 
 function depositForm(c, after) {
@@ -1098,6 +1112,7 @@ async function incidentDetail(id, after) {
         ${isOpen ? `<button type="button" class="btn danger" data-a="cancel">Hủy phiếu (báo nhầm)</button>` : ""}
       </div>`,
   });
+  actsToFooter(m);
   const on = (a, fn) => { const b = $(`[data-a="${a}"]`, m.el); if (b) b.addEventListener("click", fn); };
   on("start", () => call("start", undefined, null));   // trạng thái đổi ngay trong bảng — im lặng
   on("resolve", () => {
