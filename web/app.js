@@ -1055,13 +1055,17 @@ function newTenant(pid, after) {
 VIEWS.incidents = async (v) => {
   let open = false;   // mặc định xem tất cả phiếu
   v.innerHTML = head("Sự cố", "Phiếu báo hỏng từ người thuê và quản lý") + `
-    <div class="card"><div class="toolbar">${filterBar("seg", "o", [["", "Tất cả"], ["1", "Chưa xử lý xong"]], "")}</div>
+    <div class="card"><div class="toolbar">${filterBar("seg", "o", [["", "Tất cả"], ["1", 'Chưa xử lý xong<span class="count hidden" id="open-count"></span>']], "")}</div>
     <div class="tbl-wrap" id="tbl">${skeleton()}</div></div>`;
   const load = async () => {
     const res = await api("GET", "/api/v1/incidents?" + qs({ page_size: 100, is_open: open || "" }));
     if (!res.ok) throw new Error(apiErr(res));
     const list = items(res);
-    if (open) setBadge("incidents", list.length);
+    /* Số phiếu chưa xử lý xong: hiện ở nút lọc và ở tab "Sự cố" (cùng một số) */
+    const openCount = open ? list.length : list.filter((x) => x.is_open).length;
+    setBadge("incidents", openCount);
+    $("#open-count").textContent = openCount;
+    $("#open-count").classList.toggle("hidden", !openCount);
     $("#tbl").innerHTML = list.length ? `<table>
       <tr><th>Sự cố</th><th>Phòng</th><th>Người báo</th><th>Mức độ</th><th>Báo lúc</th><th>Trạng thái</th></tr>
       ${list.map((i) => `<tr class="click" data-id="${i.id}">

@@ -278,6 +278,8 @@ input[type="number"], .meter-in { font-family: var(--font-num); }
 .tab .count { min-width: 1.25rem; padding: 0 var(--space-1); border-radius: var(--radius); background: var(--color-accent);
               color: var(--color-on-accent); font: 600 var(--text-xs)/1.4 var(--font-num); text-align: center; }
 .tab-end { margin-left: auto; }
+.filter .count { display: inline-block; min-width: 1.25rem; margin-left: var(--space-2); padding: 0 var(--space-1); border-radius: var(--radius);
+                 background: var(--color-accent); color: var(--color-on-accent); font: 600 var(--text-xs)/1.5 var(--font-num); text-align: center; }
 
 .page { max-width: 76rem; margin: 0 auto; padding: var(--space-6) var(--space-6) var(--space-12); }
 .page-head { display: flex; align-items: flex-end; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-6); }
