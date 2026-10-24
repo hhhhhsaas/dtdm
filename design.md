@@ -22,29 +22,39 @@ tiêu đề bảng, biên lai) ở bề mặt tiền và chỉ số.
 - Màn đăng nhập: một thẻ giữa trang, logo đầy đủ, không khẩu hiệu.
 
 ## Theme
-Hai màu thương hiệu lấy đúng từ logo (`web/brand/`). Sáng mặc định theo hệ điều hành,
-người dùng đổi được (nút ở đầu trang, nhớ trong trình duyệt).
+Palette do người dùng chọn (v3, 24/10/2026):
+`#4392F1` Blue Energy · `#ECE8EF` Lavender Mist · `#E3EBFF` Lavender · `#E7F0FF` Alice Blue · `#DC493A` Cinnabar.
+Sáng mặc định theo hệ điều hành, người dùng đổi được (nút ở đầu trang, nhớ trong trình duyệt).
 
-| Token | Sáng | Tối |
+Mã gốc dùng cho NỀN và MẢNG MÀU. Chữ và nền nút dùng bản đậm hơn cùng hue, vì đo được:
+chữ trắng trên #4392F1 = 3.17:1, chữ #DC493A trên #ECE8EF = 3.43:1 — dưới chuẩn AA 4.5:1.
+
+| Token | Sáng | Vai trò |
 |---|---|---|
-| `--color-paper` (nền trang) | oklch(96% 0.012 85) | oklch(17.5% 0.012 65) |
-| `--color-surface` (thẻ) | oklch(99.2% 0.005 85) | oklch(21.5% 0.013 65) |
-| `--color-surface-2` (đầu bảng, ô nhập) | oklch(94.5% 0.014 85) | oklch(25.5% 0.014 65) |
-| `--color-ink` | oklch(22.5% 0.013 78) | oklch(93% 0.01 85) |
-| `--color-ink-2` | oklch(46% 0.012 70) | oklch(72% 0.012 80) |
-| `--color-rule` | oklch(87% 0.014 80) | oklch(31% 0.012 65) |
-| `--color-accent` (đỏ son) | oklch(50% 0.199 28.6) | oklch(65% 0.18 28) |
+| `--color-paper` | #ECE8EF | nền trang |
+| `--color-surface` | oklch(99% 0.004 300) | thẻ |
+| `--color-surface-2` | #E7F0FF | đầu bảng, ô nhập, bộ lọc |
+| `--color-select` / `--color-info-soft` | #E3EBFF | dòng đang rê chuột, nhãn "trống" |
+| `--color-primary` | #4392F1 | gạch chân tab, thanh tiến độ, thanh sổ thu |
+| `--color-primary-strong` | oklch(54% 0.16 256) | nền nút chính, chữ xanh, vòng focus |
+| `--color-accent-fill` | #DC493A | mảng màu nợ (thanh "quá hạn") |
+| `--color-accent` | oklch(50% 0.18 29) | chữ đỏ: nợ, quá hạn, khẩn |
+| `--color-ink` / `--color-ink-2` | oklch(24% 0.02 275) / oklch(46% 0.02 275) | chữ |
 
-Màu trạng thái — tự pha, độ bão hòa thấp, mỗi màu có nền nhạt `-soft`:
+Chế độ tối: tím than cùng họ (nền oklch(18% 0.02 285)), xanh chính oklch(70% 0.15 255)
+với chữ tối trên nút. Giá trị đầy đủ ở `web/app.css`.
+
+Màu trạng thái — mỗi màu có nền nhạt `-soft`:
 | Token | Nghĩa | Hue |
 |---|---|---|
-| `--color-ok` | đang thuê, đã thanh toán, đã xử lý | xanh rêu 155 |
-| `--color-info` | còn trống, chờ ký, đang xử lý | xanh xám 245 |
+| `--color-ok` | đang thuê, đã thanh toán, đã xử lý | xanh lá 160 |
+| `--color-info` | còn trống, chờ ký, đang xử lý | xanh 256 (họ #4392F1) |
 | `--color-warn` | bảo trì, chờ thanh toán, sắp hết hạn | vàng đất 70 |
-| `--color-hold` | đã giữ chỗ | tím mận 320 |
-| `--color-accent` | nợ, quá hạn, khẩn, sự cố mới | đỏ son 28.6 |
+| `--color-hold` | đã giữ chỗ | tím 300 |
+| `--color-accent` | nợ, quá hạn, khẩn, sự cố mới | cinnabar 29 |
 
-Quy tắc đỏ: đỏ son CHỈ có nghĩa "nợ / quá hạn / khẩn / sự cố mới". Nút chính màu mực.
+Quy tắc đỏ: đỏ CHỈ có nghĩa "nợ / quá hạn / khẩn / sự cố mới". Nút chính màu xanh.
+Logo giữ màu gốc (#BA0D0D) — cùng hue với cinnabar.
 
 ## Typography
 - Chữ: Be Vietnam Pro 400 / 600 / 700 (tự host, có subset tiếng Việt)
@@ -88,7 +98,7 @@ tô màu chứa icon, không icon trang trí ở trạng thái trống.
 - Thao tác tiền không hoàn tác được → xác nhận 2 bước ngay trong form.
 
 ## CTA voice
-- Chính: nền mực, chữ nền, bo 6px, icon trong dòng + động từ ngắn.
+- Chính: nền `primary-strong` (xanh), chữ trắng, bo 6px, icon trong dòng + động từ ngắn.
 - Phụ: viền `rule`, nền `surface`.
 - Nguy hiểm: chữ + viền đỏ son — chỉ cho hủy/chấm dứt.
 
