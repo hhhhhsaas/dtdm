@@ -1103,7 +1103,6 @@ async function incidentDetail(id, after) {
         ${i.rating ? `<dt>Người thuê đánh giá</dt><dd>${i.rating}/5 ${esc(i.rating_comment || "")}</dd>` : ""}
       </dl>
       ${i.status === "IN_PROGRESS" ? `<div class="section-t">Báo đã xử lý xong</div>
-        <div class="field"><label for="res">Đã làm gì</label><textarea id="res" name="resolution" placeholder="VD: Thay vòi nước mới, kiểm tra không rò rỉ"></textarea></div>
         <div class="field narrow"><label for="cost">Chi phí (nếu có)</label><input id="cost" name="cost" type="number" step="1000" min="0"></div>` : ""}
       <div class="acts">
         ${["OPEN", "ASSIGNED"].includes(i.status) ? `<button type="button" class="btn" data-a="start">Bắt đầu xử lý</button>` : ""}
@@ -1115,11 +1114,7 @@ async function incidentDetail(id, after) {
   actsToFooter(m);
   const on = (a, fn) => { const b = $(`[data-a="${a}"]`, m.el); if (b) b.addEventListener("click", fn); };
   on("start", () => call("start", undefined, null));   // trạng thái đổi ngay trong bảng — im lặng
-  on("resolve", () => {
-    const res = val(m.form, "resolution");
-    if (res.length < 3) return toast("Vui lòng ghi ngắn gọn đã xử lý gì.", "err");
-    call("resolve", { resolution: res, cost: val(m.form, "cost") || null }, "Đã đánh dấu xử lý xong.");
-  });
+  on("resolve", () => call("resolve", { cost: val(m.form, "cost") || null }, "Đã đánh dấu xử lý xong."));
   on("close", () => call("close", {}, "Đã đóng phiếu."));
   on("cancel", () => { m.close(); reasonForm("Hủy phiếu sự cố", 3, (r) => must("POST", `/api/v1/incidents/${id}/cancel?` + qs({ reason: r })), "Đã hủy phiếu.", after); });
 }

@@ -139,7 +139,9 @@ class IncidentResolve(BaseModel):
        nhưng không ai kiểm tra tải là nguy cơ cháy lần sau.
     """
 
-    resolution: str = Field(min_length=3, max_length=5000)
+    # Không bắt buộc ghi "đã làm gì" (giao diện không hỏi nữa) — để trống thì
+    # lưu câu mặc định để cột `resolution` vẫn có nội dung trong lịch sử phiếu.
+    resolution: str = Field(default="Đã xử lý xong", min_length=3, max_length=5000)
     cost: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
     verified_by: uuid.UUID | None = Field(
         default=None, description="user_id người ký xác nhận an toàn",
