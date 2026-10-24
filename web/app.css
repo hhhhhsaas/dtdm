@@ -257,7 +257,7 @@ input[type="number"], .meter-in { font-family: var(--font-num); }
 .tab[aria-current="page"] { color: var(--color-ink); border-bottom-color: var(--color-accent); }
 .tab .count { min-width: 1.25rem; padding: 0 var(--space-1); border-radius: var(--radius); background: var(--color-accent);
               color: var(--color-on-accent); font: 600 var(--text-xs)/1.4 var(--font-num); text-align: center; }
-.tab-gap { flex: none; width: var(--space-4); }
+.tab-end { margin-left: auto; }
 
 .page { max-width: 76rem; margin: 0 auto; padding: var(--space-6) var(--space-6) var(--space-12); }
 .page-head { display: flex; align-items: flex-end; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-6); }
@@ -454,7 +454,7 @@ th .ic { margin-right: var(--space-1); }
   .tab[aria-current="page"] { border-top-color: var(--color-accent); }
   .tab .count { position: absolute; margin: -0.25rem 0 0 1.25rem; }
   .tab { position: relative; }
-  .tab-gap { display: none; }
+  .tab-end { margin-left: 0; }
   .page { padding: var(--space-4) var(--space-4) 6rem; }
   .page-head .actions { margin-left: 0; width: 100%; }
   .row2 { grid-template-columns: minmax(0, 1fr); }

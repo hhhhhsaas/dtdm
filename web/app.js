@@ -273,9 +273,11 @@ function enterApp() {
 }
 
 function renderNav() {
-  $("#nav").innerHTML = navDef().map((list) => list.map(([id, icon, label]) =>
-      `<button class="tab" data-tab="${id}">${ico(icon)}<span>${label}</span><span class="count hidden" data-badge="${id}"></span></button>`).join("")
-  ).join(`<span class="tab-gap" aria-hidden="true"></span>`);
+  /* Khoảng cách giữa các tab đều nhau; tab "Tài khoản" (nhóm cuối) đẩy sang phải */
+  const groups = navDef();
+  $("#nav").innerHTML = groups.map((list, gi) => list.map(([id, icon, label]) =>
+      `<button class="tab ${gi === groups.length - 1 && groups.length > 1 ? "tab-end" : ""}" data-tab="${id}">${ico(icon)}<span>${label}</span><span class="count hidden" data-badge="${id}"></span></button>`).join("")
+  ).join("");
   $$("#nav .tab").forEach((b) => b.addEventListener("click", () => go(b.dataset.tab)));
   $("#home-link").addEventListener("click", (e) => { e.preventDefault(); go(allowedTabs()[0]); });
   const u = state.user;
