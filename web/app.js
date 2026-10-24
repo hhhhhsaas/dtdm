@@ -1304,6 +1304,63 @@ function usageLine(series, aria) {
   </svg>`;
 }
 
+/* Lưới 2×2 dưới ô tiền — mọi số tính từ /invoices/mine + /contracts/mine, không cần API mới.
+   Hai ô là ƯỚC TÍNH và ghi rõ cách tính, để không ai hiểu nhầm là số chính thức. */
+const FACT_PARTS = [["RENT", "Phòng", "rent"], ["ELECTRIC", "Điện", "elec"], ["WATER", "Nước", "water"], ["SERVICE", "Dịch vụ", "svc"]];
+function moneyFacts(invoices, contract) {
+  const list = invoices.filter((i) => i.status !== "CANCELLED").sort((a, b) => b.period.localeCompare(a.period));
+  if (!list.length) return "";
+  const latest = list[0];
+  const sumType = (inv, types) => (inv.details || []).filter((d) => types.includes(d.item_type)).reduce((a, d) => a + num(d.amount), 0);
+
+  // 1 · Tiền đi đâu (kỳ gần nhất): phòng / điện / nước / dịch vụ / khác
+  const parts = FACT_PARTS.map(([t, label, cls]) => [label, cls, sumType(latest, [t])]);
+  const other = num(latest.total_amount) - parts.reduce((a, p) => a + p[2], 0);
+  if (Math.abs(other) >= 1000) parts.push(["Khác", "other", other]);
+  const positive = parts.filter((p) => p[2] > 0), base = positive.reduce((a, p) => a + p[2], 0) || 1;
+  const short = (v) => v >= 1e6 ? `${(v / 1e6).toLocaleString("vi-VN", { maximumFractionDigits: 2 })}tr` : `${Math.round(v / 1000).toLocaleString("vi-VN")}k`;
+
+  // 2 · Dự kiến tháng tới = tiền phòng + trung bình (điện + nước + dịch vụ) tối đa 3 kỳ gần nhất
+  const recent = list.slice(0, 3);
+  const variable = recent.reduce((a, i) => a + sumType(i, ["ELECTRIC", "WATER", "SERVICE"]), 0) / recent.length;
+  const rent = contract && contract.status !== "EXPIRED" ? num(contract.monthly_price) : sumType(latest, ["RENT"]);
+  const forecast = Math.round((rent + variable) / 1000) * 1000;
+  const nextPeriod = shiftPeriod(latest.period, 1);
+
+  // 3 · Trả đúng hạn: kỳ đã trả đủ mà không bị tính phí trễ hạn (hệ thống không lưu ngày trả)
+  const paid = list.filter((i) => i.status === "PAID");
+  const onTime = paid.filter((i) => !(i.details || []).some((d) => d.item_type === "LATE_FEE")).length;
+
+  // 4 · Đã trả trong năm nay
+  const year = String(new Date().getFullYear());
+  const thisYear = list.filter((i) => i.period.startsWith(year) && num(i.paid_amount) > 0);
+  const paidYear = thisYear.reduce((a, i) => a + num(i.paid_amount), 0);
+
+  return `<div class="facts">
+    <div class="fact">
+      <div class="k">Tiền đi đâu · ${fmtPeriod(latest.period).toLowerCase()}</div>
+      <div class="segbar" role="img" aria-label="${positive.map((p) => `${p[0]} ${fmtMoney(p[2])}`).join(", ")}">
+        ${positive.map((p) => `<i class="seg-${p[1]}" style="width:${((p[2] / base) * 100).toFixed(1)}%"></i>`).join("")}</div>
+      <div class="seglegend">${parts.map((p) => `<span><i class="sw seg-${p[1]}"></i>${p[0]} <b class="num">${p[2] < 0 ? "−" : ""}${short(Math.abs(p[2]))}</b></span>`).join("")}</div>
+    </div>
+    <div class="fact">
+      <div class="k">Dự kiến ${fmtPeriod(nextPeriod).toLowerCase()}</div>
+      <div class="v">≈ ${fmtMoney(forecast)}</div>
+      <div class="s">hạn khoảng ${fmtDate(addMonths(latest.due_date, 1))} · ước tính từ ${recent.length} kỳ gần nhất</div>
+    </div>
+    <div class="fact">
+      <div class="k">Trả đúng hạn</div>
+      <div class="v">${paid.length ? `${onTime}/${paid.length} kỳ` : "—"}</div>
+      <div class="s">tính theo kỳ không bị phí trễ hạn</div>
+    </div>
+    <div class="fact">
+      <div class="k">Đã trả năm ${year}</div>
+      <div class="v">${fmtMoney(paidYear)}</div>
+      <div class="s">${thisYear.length} kỳ</div>
+    </div>
+  </div>`;
+}
+
 VIEWS.room = async (v) => {
   const [inv, con, inc, noti] = await Promise.all([
     api("GET", "/api/v1/invoices/mine?limit=12"),
@@ -1352,11 +1409,14 @@ VIEWS.room = async (v) => {
     ${!inv.ok || !con.ok || !noti.ok ? `<div class="note alarm">${ico("alert")}<div>Một số mục chưa tải được — tải lại trang sau ít phút.</div></div>` : ""}
     <div class="room-grid">
       <section class="card amount-due ${owed > 0 ? "" : "paid"}">
+        <div class="pay-head"><div>
         ${owed > 0 ? `<div class="label">${ico("cash")}Cần thanh toán</div>
             <span class="big ${late ? "due" : ""}" data-count="${owed}">${fmtMoney(owed)}</span>
             <div class="${late ? "due strong" : "sub"}">${late ? `Đã quá hạn ${next.days_overdue} ngày` : `Hạn trả ${fmtDate(next.due_date)}`}</div>`
           : `<div class="label">${ico("check")}Bạn đã thanh toán đủ</div><div class="sub">Không có khoản nào cần trả.</div>`}
-        <button class="btn ${owed > 0 ? "" : "ghost"}" data-go="my-invoices">${ico("receipt", "sm")}${owed > 0 ? "Xem hóa đơn & cách trả" : "Xem các kỳ đã trả"}</button>
+        </div>
+        <button class="btn ${owed > 0 ? "" : "ghost"}" data-go="my-invoices">${ico("receipt", "sm")}${owed > 0 ? "Xem hóa đơn & cách trả" : "Xem các kỳ đã trả"}</button></div>
+        ${moneyFacts(invoices, contract)}
       </section>
       <section class="card">
         <div class="card-h">${ico("file")}<h2>Hợp đồng</h2>${contract ? pill(LABEL.contract, contract.status) : ""}</div>
