@@ -267,6 +267,10 @@ input[type="number"], .meter-in { font-family: var(--font-num); }
 .login-brand { line-height: 0; }
 .login-brand img { height: 1.5rem; width: auto; }
 .login-form { align-self: center; width: min(22rem, 100%); }
+/* Một cột (điện thoại, tablet dọc): logo, form, dòng chân cùng một trục ở giữa màn hình */
+@media (max-width: 55.99rem) {
+  .login-side > * { justify-self: center; width: min(22rem, 100%); }
+}
 .login h1 { font-size: var(--text-xl); line-height: 1.1; letter-spacing: -0.02em; }
 .login-lede { margin: var(--space-2) 0 var(--space-6); color: var(--color-ink-2); font-size: var(--text-md); }
 .login input { padding-block: var(--space-3); font-size: var(--text-md); }
