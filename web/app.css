@@ -299,6 +299,17 @@ input[type="number"], .meter-in { font-family: var(--font-num); }
 .hero-fig .of { color: var(--color-ink-2); }
 .meter { height: 0.625rem; border-radius: 99px; background: var(--color-surface-2); overflow: hidden; display: flex; margin-top: var(--space-2); }
 .hero-fig .meter { margin-top: auto; }
+/* Sổ thu tiền: "đã thu / tổng đã lập" bên trái, "còn phải thu" bên phải thanh */
+.collect { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--space-2) var(--space-6); }
+.collect-fig { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); }
+.collect .of-total, .collect .owe { font-family: var(--font-num); font-size: var(--text-lg); font-weight: 600; white-space: nowrap; }
+.collect .of-total { color: var(--color-ink-2); }
+.collect .owe { color: var(--color-accent); }
+.collect-owe { text-align: right; }
+.collect .cap { font-size: var(--text-xs); color: var(--color-ink-2); }
+.inv-sum .meter { margin-top: var(--space-3); }
+.meter-key .ic { vertical-align: -0.15em; }
+.meter-key .ok-t b { color: var(--color-ok); }
 .hero-fig .of { margin-bottom: var(--space-4); }
 .meter i { display: block; height: 100%; }
 .meter .m-ok { background: var(--color-primary); }

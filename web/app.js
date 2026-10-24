@@ -659,14 +659,22 @@ VIEWS.invoices = async (v) => {
     if (!res.ok) throw new Error(apiErr(res));
     const s = stats.data || {};
     const billed = num(s.total_billed), pctOf = (x) => billed ? Math.min(100, (num(x) / billed) * 100).toFixed(1) + "%" : "0%";
+    /* Đếm theo hóa đơn: lọc một kỳ thì mỗi người thuê một hóa đơn → gọi là
+       "người thuê"; xem mọi kỳ thì một người có nhiều hóa đơn → gọi "hóa đơn". */
+    const who = period ? "người thuê" : "hóa đơn";
+    const unpaid = (s.pending ?? 0) + (s.overdue ?? 0);
     $("#sum").innerHTML = `
       <div class="label">${ico("receipt")}${period ? fmtPeriod(period) : "Mọi kỳ"} · ${s.total_invoices ?? 0} hóa đơn đã lập</div>
-      <div class="big">${fmtMoney(s.total_billed)}</div>
-      <div class="meter" role="img" aria-label="Đã thu ${pctOf(s.total_collected)}">
+      <div class="collect">
+        <div><div class="collect-fig"><span class="big">${fmtMoney(s.total_collected)}</span><span class="of-total">/ ${fmtMoney(s.total_billed)}</span></div>
+          <div class="cap">Đã thu / tổng đã lập</div></div>
+        <div class="collect-owe"><span class="owe">${fmtMoney(s.total_outstanding)}</span><div class="cap">Còn phải thu</div></div>
+      </div>
+      <div class="meter" role="img" aria-label="Đã thu ${pctOf(s.total_collected)} tổng đã lập">
         <i class="m-ok" style="width:${pctOf(s.total_collected)}"></i></div>
       <div class="meter-key">
-        <span><i class="sw m-ok"></i>Đã thu <b>${fmtMoney(s.total_collected)}</b> · ${s.paid ?? 0} trả đủ</span>
-        <span>Còn phải thu <b class="warn-t">${fmtMoney(s.total_outstanding)}</b>${s.overdue ? ` · <span class="due">${s.overdue} quá hạn</span>` : ""}</span></div>`;
+        <span class="ok-t">${ico("check", "sm")} <b>${s.paid ?? 0}</b> ${who} đã trả đủ</span>
+        <span>${ico("alert", "sm")} <b>${unpaid}</b> ${who} chưa trả${s.overdue ? ` <span class="due">(${s.overdue} quá hạn)</span>` : ""}</span></div>`;
     const list = items(res);
     const owe = (i) => num(i.total_amount) - num(i.paid_amount);
     $("#tbl").innerHTML = list.length ? `<table>
