@@ -83,13 +83,11 @@ class IncidentCreate(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def _need_reporter(self) -> IncidentCreate:
-        if not (self.reported_by_tenant_id or self.reported_by_user_id
-                or self.reported_by_name):
-            raise ValueError(
-                "Phải cho biết ai báo: truyền reported_by_tenant_id, "
-                "reported_by_user_id hoặc reported_by_name"
-            )
+    def _one_reporter_source(self) -> IncidentCreate:
+        # ⭐ KHÔNG bắt buộc client khai "ai báo": handler luôn gán người báo từ
+        #    JWT (người thuê không được tự khai tenant_id). Bắt buộc ở đây thì
+        #    validator chạy TRƯỚC handler và trả 422 cho chính người thuê đang
+        #    đăng nhập — form báo sự cố hỏng hoàn toàn.
         if self.reported_by_tenant_id and self.reported_by_user_id:
             raise ValueError(
                 "Chỉ chọn MỘT nguồn báo: người thuê (tenant) hoặc quản lý (user)"

@@ -916,6 +916,9 @@ async def create_incident(
         payload.reported_by_tenant_id = user.tenant_id      # từ JWT, không từ client
         payload.reported_by_user_id = user.id
         reporter_name = user.username
+    elif not (payload.reported_by_tenant_id or payload.reported_by_user_id):
+        # Quản lý tự ghi phiếu mà không khai người báo → chính tài khoản đó
+        payload.reported_by_user_id = user.id
 
     incident = Incident(
         ticket_no=await _next_ticket_no(session),
