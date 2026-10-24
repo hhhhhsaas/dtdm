@@ -1346,17 +1346,17 @@ function moneyFacts(invoices, contract) {
     <div class="fact">
       <div class="k">Dự kiến ${fmtPeriod(nextPeriod).toLowerCase()}</div>
       <div class="v">≈ ${fmtMoney(forecast)}</div>
-      <div class="s">hạn khoảng ${fmtDate(addMonths(latest.due_date, 1))} · ước tính từ ${recent.length} kỳ gần nhất</div>
+      <div class="s">hạn khoảng ${fmtDate(addMonths(latest.due_date, 1))} · ước tính từ ${recent.length} tháng gần nhất</div>
     </div>
     <div class="fact">
       <div class="k">Trả đúng hạn</div>
-      <div class="v">${paid.length ? `${onTime}/${paid.length} kỳ` : "—"}</div>
-      <div class="s">tính theo kỳ không bị phí trễ hạn</div>
+      <div class="v">${paid.length ? `${onTime}/${paid.length} tháng` : "—"}</div>
+      <div class="s">tính theo tháng không bị phí trễ hạn</div>
     </div>
     <div class="fact">
       <div class="k">Đã trả năm ${year}</div>
       <div class="v">${fmtMoney(paidYear)}</div>
-      <div class="s">${thisYear.length} kỳ</div>
+      <div class="s">${thisYear.length} tháng</div>
     </div>
   </div>`;
 }
@@ -1415,7 +1415,7 @@ VIEWS.room = async (v) => {
             <div class="${late ? "due strong" : "sub"}">${late ? `Đã quá hạn ${next.days_overdue} ngày` : `Hạn trả ${fmtDate(next.due_date)}`}</div>`
           : `<div class="label">${ico("check")}Bạn đã thanh toán đủ</div><div class="sub">Không có khoản nào cần trả.</div>`}
         </div>
-        <button class="btn ${owed > 0 ? "" : "ghost"}" data-go="my-invoices">${ico("receipt", "sm")}${owed > 0 ? "Xem hóa đơn & cách trả" : "Xem các kỳ đã trả"}</button></div>
+        <button class="btn ${owed > 0 ? "" : "ghost"}" data-go="my-invoices">${ico("receipt", "sm")}${owed > 0 ? "Xem hóa đơn & cách trả" : "Xem các tháng đã trả"}</button></div>
         ${moneyFacts(invoices, contract)}
       </section>
       <section class="card">
