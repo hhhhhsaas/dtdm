@@ -35,7 +35,17 @@ class Base(DeclarativeBase):
 
     Mỗi service định nghĩa model RIÊNG trên lớp cơ sở này.
     Không có quan hệ ORM giữa model của các service khác nhau.
+
+    ⭐ eager_defaults=True: cột `updated_at ... onupdate=func.now()` do DATABASE
+       tính lúc UPDATE. Mặc định SQLAlchemy chỉ lấy giá trị server sinh khi
+       INSERT (qua RETURNING); sau UPDATE nó đánh dấu cột "hết hạn" và đọc lại
+       khi có ai truy cập — trong async đó là I/O ngầm → `MissingGreenlet`,
+       request trả 500. Bật cờ này để UPDATE cũng dùng RETURNING lấy luôn giá
+       trị mới. Triệu chứng trước khi sửa: tạo phiếu được, nhưng mọi thao tác
+       đổi trạng thái rồi trả object (bắt đầu xử lý, đóng phiếu…) đều 500.
     """
+
+    __mapper_args__ = {"eager_defaults": True}
 
     def to_dict(self, exclude: set[str] | None = None) -> dict:
         """Chuyển model thành dict để trả về JSON."""

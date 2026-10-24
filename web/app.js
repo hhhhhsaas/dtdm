@@ -97,7 +97,7 @@ const apiErr = (res) => {
        thông báo lỗi hệ thống tự nó đã bảo "cung cấp mã lỗi cho quản trị viên". */
     const fields = (d.error.details && d.error.details.fields) || [];
     const what = fields.map((f) => `${f.field}: ${f.problem}`).join("; ");
-    const id = res.status >= 500 && d.request_id ? ` (mã lỗi: ${d.request_id})` : "";
+    const id = res.status >= 500 && d.request_id && d.request_id !== "-" ? ` (mã lỗi: ${d.request_id})` : "";
     return d.error.message + (what ? ` — ${what}` : "") + id;
   }
   if (Array.isArray(d.detail)) return d.detail.map((x) => x.msg).join("; ");
@@ -1067,8 +1067,10 @@ VIEWS.incidents = async (v) => {
 async function incidentDetail(id, after) {
   const i = await must("GET", "/api/v1/incidents/" + id);
   const call = async (path, body, ok) => {
+    const btns = $$("[data-a]", m.el);
+    btns.forEach((b) => { b.disabled = true; });   // chống bấm nhiều lần gửi nhiều request
     try { await must("POST", `/api/v1/incidents/${id}/${path}`, body); if (ok) toast(ok); m.close(); after(); }
-    catch (e) { toast(e.message, "err"); }
+    catch (e) { toast(e.message, "err"); btns.forEach((b) => { b.disabled = false; }); }
   };
   const isOpen = !["RESOLVED", "CLOSED", "CANCELLED"].includes(i.status);
   const m = modal({
