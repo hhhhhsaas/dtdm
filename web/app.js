@@ -1053,9 +1053,9 @@ function newTenant(pid, after) {
    7. SỰ CỐ (quản lý)
    ====================================================================== */
 VIEWS.incidents = async (v) => {
-  let open = true;
+  let open = false;   // mặc định xem tất cả phiếu
   v.innerHTML = head("Sự cố", "Phiếu báo hỏng từ người thuê và quản lý") + `
-    <div class="card"><div class="toolbar">${filterBar("seg", "o", [["", "Tất cả"], ["1", "Chưa xử lý xong"]], "1")}</div>
+    <div class="card"><div class="toolbar">${filterBar("seg", "o", [["", "Tất cả"], ["1", "Chưa xử lý xong"]], "")}</div>
     <div class="tbl-wrap" id="tbl">${skeleton()}</div></div>`;
   const load = async () => {
     const res = await api("GET", "/api/v1/incidents?" + qs({ page_size: 100, is_open: open || "" }));
