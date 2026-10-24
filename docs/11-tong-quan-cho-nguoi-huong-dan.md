@@ -2,8 +2,9 @@
 
 > **Tài liệu trình bày dành cho người hướng dẫn** (dựng từ code & hạ tầng thực tế).
 > Hạ tầng triển khai: **VMware → OpenStack (DevStack) → VM `rental-server` (Ubuntu 24.04) → Docker**.
-> ⚠️ Các con số kiểm chứng (smoke 26/26, KPI dashboard, số container chạy) được đo trên bản
-> chạy thử trước đó; **phải đo lại trên `rental-server` trước buổi bảo vệ** (checklist ở mục 12).
+> ✅ Tài nguyên (RAM/CPU 16 container) **đã đo trên `rental-server` ngày 23/10/2026** — mục 7.2.
+> ⚠️ Smoke 26/26 và KPI dashboard đo trên bản chạy thử trước đó; **phải đo lại trên `rental-server`
+> trước buổi bảo vệ** (checklist ở mục 12).
 >
 > Bản gốc mã nguồn: `ql-phong-tro/` · Bản triển khai: `~/dtdm` trong VM `rental-server`
 
@@ -172,7 +173,7 @@ sequenceDiagram
 
     Q->>R: invoice.created
     Note over R: Bước 3 — idempotent consumer
-    R->>R: INSERT processed_events(event_id) UNIQUE
+    R->>R: INSERT processed_events(event_id, consumer) PK
     alt đã tồn tại event_id
         R-->>Q: ack (bỏ qua — gửi lại không sao)
     else lần đầu
@@ -184,7 +185,7 @@ sequenceDiagram
 | Mẫu | Ý nghĩa | Vị trí trong code |
 |---|---|---|
 | **Transactional Outbox** | Ghi event **cùng transaction** với dữ liệu → crash giữa chừng cũng **không mất event** | `services/common/events.py` (bảng `outbox`, `enqueue_outbox`) |
-| **Idempotent Consumer** | RabbitMQ gửi lại (retry) → xử lý lại **không sinh trùng** nhờ `UNIQUE(event_id)` | bảng `processed_events` trong `events.py` |
+| **Idempotent Consumer** | RabbitMQ gửi lại (retry) → xử lý lại **không sinh trùng** nhờ khóa chính `(event_id, consumer)` — mỗi consumer đánh dấu riêng, 2 consumer cùng nghe 1 event không chặn nhau | bảng `processed_events` trong `events.py` |
 | **DLQ (Dead Letter Queue)** | Event lỗi nhiều lần không làm nghẽn hàng chính | queue `qlpt.dlq` + DLX fanout trong `events.py` |
 | **CQRS** | Tách **ghi** (từng service) khỏi **đọc** (report đọc từ read model) | `report-service` + endpoint `/internal/v1/reports/reconcile` |
 
@@ -225,8 +226,14 @@ Vì report chỉ ghi **read model** (không phải nguồn chân lý), hệ th�
 ### 6.1. Xác thực & phân quyền
 
 - **JWT** (access 15 phút + refresh thu hồi được), hash mật khẩu **Argon2id**.
+  Access token chỉ giữ **trong bộ nhớ** trình duyệt; refresh token nằm trong cookie **HttpOnly**
+  (`path=/api/v1/auth`) → script độc chèn vào trang cũng không đọc được token. Kèm **CSP
+  `script-src 'self'`** chặn script lạ.
+- **Khóa tài khoản** sau nhiều lần sai mật khẩu; IP ghi log lấy từ `X-Real-IP` do nginx đặt
+  (không tin `X-Forwarded-For` client gửi lên).
 - **RBAC nhiều tầng**: kiểm tra **role** *và* **phạm vi cơ sở (property_id)** — chống IDOR/leo quyền.
-  `TENANT` chỉ thấy được dữ liệu của chính mình (smoke test có kiểm tra điểm này).
+  `TENANT` chỉ thấy được dữ liệu của chính mình (smoke test có kiểm tra điểm này): JWT mang claim
+  `tenant_id` (liên kết `users.tenant_id`), ví dụ `/invoices/mine` lọc theo claim này.
 - **Token nội bộ SYSTEM**: job nền không có user thật trong bảng login → ký JWT với role SYSTEM,
   mọi lời gọi đều **có định danh** và bị chặn nếu thiếu (xem `create_internal_token` trong
   `services/common/security.py`). Endpoint `/internal/v1/*` bắt buộc token này.
@@ -235,16 +242,20 @@ Vì report chỉ ghi **read model** (không phải nguồn chân lý), hệ th�
 
 - **CCCD mã hóa AES-256-GCM** + **blind index HMAC** (khóa tách riêng) để vẫn `WHERE` theo CCCD
   được mà không lộ plaintext. **Chỉ `tenant-service` được cấp khóa** (xem `docker-compose.yml`).
-- Bí mật nằm trong thư mục `secrets/` và cấp qua Docker Secrets — **không nằm trong `.env` hay compose** (6 bí mật).
+- CCCD đầy đủ **chỉ lưu ở một nơi** (`db_tenant`, đã mã hóa). Hợp đồng (`db_contract`) chỉ giữ
+  **4 số cuối** để in/đối chiếu — lộ `db_contract` không lộ CCCD.
+- Bí mật nằm trong thư mục `secrets/` và cấp qua Docker Secrets — **không nằm trong `.env` hay compose**;
+  mỗi container chỉ được mount đúng secret nó cần (ví dụ `billing` chỉ có `db_password_billing`).
 
 ### 6.3. Cứng hóa hạ tầng
 
 | Biện pháp | Chi tiết |
 |---|---|
 | **Container non-root** | User `app` (uid 10001) cho toàn bộ service |
+| **Tài khoản DB riêng từng service** | 8 role `svc_<db>` (không superuser), mỗi role chỉ `CONNECT` được DB của mình — `svc_room` không vào được `db_auth`. Superuser `qlpt` chỉ dùng cho backup |
 | **Cap drop ALL** + `no-new-privileges` | Không giữ khả năng đặc quyền thừa |
 | **`read_only: true`** + tmpfs | Filesystem gốc không ghi được → mã độc không tự cài được |
-| **Giới hạn tài nguyên** | Service 0,5 CPU / 512 MB; `billing` 2 CPU / 1 GB; `postgres` 1,5 CPU / 3 GB |
+| **Giới hạn tài nguyên** | Bản đầy đủ: service 0,5 CPU / 512 MB; `billing` 2 CPU / 1 GB; `postgres` 1,5 CPU / 3 GB. Bản `laptop` trên VM 4 GB: service 384 MB, `billing` 768 MB, `postgres` 1,5 GB (số đo thật ở mục 7.2) |
 | **Cổng backend ghim 127.0.0.1** | Chỉ nginx đi qua được |
 | **Grafana** chỉ `127.0.0.1` | Vào từ xa bằng SSH tunnel |
 | **HTTPS** | Chứng chỉ tự ký (nginx) |
@@ -304,6 +315,29 @@ ssh -N -L 3000:127.0.0.1:13000 host@192.168.88.128
 
 > Compose **gộp** cấu hình từ nhiều file (`-f A -f B`). Đây là cách thêm lớp cấu hình mà **không sửa
 > file gốc** — cũng là điểm để trả lời câu hỏi "sao không sửa thẳng vào file chính?".
+
+### 7.2. Tài nguyên thực đo trên `rental-server` (23/10/2026, hệ thống nhàn rỗi)
+
+`free -h` (toàn VM): **dùng 1,7 GiB / 3,8 GiB**, còn khả dụng **2,1 GiB**, swap dùng **524 KiB / 2 GiB** (gần như 0).
+
+`docker stats --no-stream`:
+
+| Nhóm | Container | RAM dùng / trần | CPU |
+|---|---|---|---|
+| 8 service + scheduler | auth, room, tenant, contract, billing, notification, maintenance, report, scheduler | **76–87 MiB mỗi cái**, tổng ≈ **706 MiB** (trần 256–768 MiB) | 0,15–5,3 % |
+| Cơ sở dữ liệu | postgres (8 DB) | **146 MiB** / 1,5 GiB | 1,3 % |
+| Hàng đợi / cache | rabbitmq · redis | 136 MiB · 4 MiB | < 1 % |
+| Lưu trữ file | minio | 85 MiB | 1,9 % |
+| Gateway | nginx | **8 MiB** | 0 % |
+| Giám sát | prometheus · grafana | 45 MiB · 74 MiB | < 0,2 % |
+| **Tổng 16 container** | | **≈ 1,2 GiB** | |
+
+**Đọc số liệu:**
+- Mỗi service Python chiếm ~78 MiB — chủ yếu là runtime Python + FastAPI + SQLAlchemy, không phải dữ liệu.
+  Đây là **chi phí cố định của microservice**: 9 tiến trình × ~78 MiB, monolith chỉ tốn 1 lần.
+- Tổng **trần** RAM cấu hình ≈ 7,1 GiB > RAM thật 3,8 GiB — trần là giới hạn trên để một container
+  rò bộ nhớ không kéo sập cả VM, không phải lượng được giữ trước. Chạy được nhờ mức dùng thật chỉ ~1/6 trần.
+- Số này đo lúc **nhàn rỗi**; số liệu dưới tải cần đo khi chạy `make loadtest` (mục 11).
 
 ---
 
@@ -370,6 +404,28 @@ ssh -N -L 3000:127.0.0.1:13000 host@192.168.88.128
 | 8 | Container luôn `unhealthy` vì thiếu `/health` | Docker healthcheck bắt buộc endpoint; scheduler ban đầu không có HTTP | Scheduler thêm app HTTP nhỏ với `/health` + `/metrics` |
 | 9 | Dependency có lỗ hổng **CRITICAL** | `PyJWT 2.10.1` (CVE-2026-102268) | Nâng `PyJWT 2.14.0` + `python-multipart 0.0.30`, **build lại toàn bộ image**, verify lại 26/26 |
 
+### 10.1. Rà soát database & bảo mật (10/2026)
+
+Nhóm đọc lại ERD và **phân tích chéo dữ liệu dump thật** của 8 database, tìm lỗi quan hệ và lỗi có thể
+bị khai thác. Áp dụng cho hệ thống đang chạy bằng `scripts/08-harden-db.sh` (chạy lại nhiều lần không lỗi,
+mỗi DB một transaction). Chi tiết ERD sau khi sửa: `docs/13-so-do-erd-database.md`.
+
+| # | Phát hiện | Rủi ro | Cách sửa |
+|---|---|---|---|
+| 1 | Cả 8 service dùng chung superuser `qlpt` | Lỗi SQL injection ở 1 service đọc được **mọi** DB | 8 role `svc_<db>` không superuser, mỗi role 1 mật khẩu + 1 secret riêng, `REVOKE CONNECT FROM PUBLIC` |
+| 2 | `tenants_snapshot` ở `db_contract` chứa **CCCD bản rõ** (10/10 dòng) | Mã hóa ở `db_tenant` trở nên vô nghĩa | Chỉ giữ 4 số cuối; `VACUUM FULL` để xóa hẳn bản cũ trên đĩa |
+| 3 | Token lưu trong `localStorage` | XSS đọc được token | Access token trong bộ nhớ, refresh token cookie HttpOnly, CSP `script-src 'self'` |
+| 4 | Khóa tài khoản sau N lần sai **bị rollback** cùng lỗi 401 | Brute-force không bị chặn | Commit bộ đếm trước khi trả lỗi |
+| 5 | Ghi nhận thanh toán đồng thời | 2 request cùng lúc → trả vượt tổng hóa đơn | `SELECT … FOR UPDATE` + `CHECK paid_amount <= total_amount` |
+| 6 | Xóa hóa đơn/hợp đồng kéo theo xóa thanh toán (`ON DELETE CASCADE`) | Mất chứng từ tiền | FK `ON DELETE RESTRICT` cho chứng từ |
+| 7 | Phòng có thể gắn vào tòa nhà của **cơ sở khác** | Dữ liệu chéo cơ sở, sai phân quyền | FK kép `rooms(building_id, property_id)` |
+| 8 | Sự cố khẩn cấp có thể khóa phòng của cơ sở khác | Leo quyền ngang (IDOR) | Kiểm tra `room_id` thuộc đúng cơ sở ở maintenance + room |
+| 9 | Hợp đồng `HDMB-2026-001` hết hạn vẫn `ACTIVE` | Job hết hạn bị lỡ khi máy tắt | Scheduler **chạy bù** (`catch_up`) khi khởi động |
+| 10 | `UNIQUE` username/email/CCCD tính cả bản ghi đã xóa mềm, CCCD trùng xuyên cơ sở | Không tạo lại được tài khoản; lộ "CCCD này đã tồn tại ở cơ sở khác" | `UNIQUE` có điều kiện (`WHERE deleted_at IS NULL`, theo `property_id`) |
+| 11 | 108/109 lần đăng nhập ghi cùng IP `172.18.0.1` | Log không truy vết được, rate-limit theo IP vô dụng | nginx ghi đè `X-Forwarded-For`, app đọc `X-Real-IP`; trên VM cần thêm `"userland-proxy": false` vào `/etc/docker/daemon.json` để nginx thấy IP thật |
+| 12 | Mẫu email Jinja2 không sandbox | Template injection nếu mẫu bị sửa | `SandboxedEnvironment` |
+| 13 | Bảng `outbox`/`processed_events`/`login_attempts` phình mãi | Đầy đĩa theo thời gian | Tự dọn: outbox 7 ngày, processed 30 ngày, login 90 ngày |
+
 ---
 
 ## 11. Hạn chế & hướng phát triển (trung thực)
@@ -423,7 +479,9 @@ sudo bash scripts/07-verify-final.sh
 | **Outbox để làm gì?** | Ghi dữ liệu và event trong **cùng transaction** → không mất event nếu process chết giữa chừng |
 | **Nếu RabbitMQ chết thì sao?** | Event nằm chờ trong bảng outbox, publisher gửi lại khi broker hồi phục; consumer idempotent nên gửi lại không sao |
 | **Tiền lưu kiểu gì?** | `Decimal`, không dùng `float` vì sai số |
-| **Tài khoản demo là gì?** | `admin` / mật khẩu trong `secrets/admin_password.txt`; người thuê `khach01` / `Tenant@12345` |
+| **Tài khoản demo là gì?** | `admin` / mật khẩu trong `secrets/admin_password.txt`; người thuê `khach01` / mật khẩu trong `secrets/tenant_demo_password.txt` (sinh ngẫu nhiên, không ghi vào tài liệu) |
+| **VM 4 GB chạy nổi 16 container không?** | Đo thật: 16 container dùng ≈ 1,2 GiB, cả VM dùng 1,7 / 3,8 GiB, swap ≈ 0 (mục 7.2) |
+| **Database có an toàn không?** | Mỗi service 1 tài khoản DB riêng không superuser; CCCD chỉ lưu 1 nơi và đã mã hóa; nhóm đã tự rà soát và sửa 13 lỗi (mục 10.1) |
 | **Vì sao không dùng cloud công cộng?** | Quy mô 1 host, tự host rẻ hơn và dữ liệu không qua bên thứ ba; đã phân tích điều kiện nên lên public cloud ở chương 8 |
 | **Cái gì em tự làm, cái gì tham khảo?** | Tham khảo mẫu từ microservices.io/NIST/Fowler; **quyết định thiết kế là của nhóm**: token SYSTEM, blind index, outbox+DLQ, DRY_RUN, seed uuid5 tất định |
 

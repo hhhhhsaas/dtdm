@@ -4,7 +4,8 @@
 > **Mục đích tài liệu:** dùng trực tiếp khi trình bày với người hướng dẫn / hội đồng.
 > File này là "chú thích đầy đủ" cho mỗi slide, mỗi câu hỏi, mỗi bước demo.
 > Hạ tầng: **VMware → OpenStack (DevStack) → VM `rental-server` → Docker, 16 container**.
-> ⚠️ Các con số (KPI dashboard, smoke 26/26, p95) đo trên bản chạy thử trước — **đo lại trên `rental-server`** (checklist 4.2) rồi cập nhật trước khi trình bày.
+> ✅ RAM/CPU đã đo trên `rental-server` (23/10/2026): 16 container ≈ 1,2 GiB, cả VM 1,7 / 3,8 GiB — câu 31.
+> ⚠️ KPI dashboard, smoke 26/26, p95 đo trên bản chạy thử trước — **đo lại trên `rental-server`** (checklist 4.2) rồi cập nhật trước khi trình bày.
 > **Tài liệu liên kết:** `docs/11-tong-quan-cho-nguoi-huong-dan.md` (overview), `docs/09-slide-thuyet-trinh.md` (12 slide structure).
 
 ---
@@ -139,7 +140,7 @@ Mật độ: 8 service + 1 scheduler · 16 container · Docker trên OpenStack
 
 1. **Self-service provisioning:** "Em đã định nghĩa các lệnh `make up`, `make health`, `make backup` — chỉ 1 lệnh để hệ thống sẵn sàng, không cần手动 can thiệp."
 2. **Broad network access:** "VM được truy cập qua floating IP của Neutron, security group chỉ mở 22/80/443; mọi client đi vào qua HTTPS của nginx."
-3. **Resource pooling:** "8 database trong cùng 1 PostgreSQL instance, nhưng mỗi service có quota riêng (CPU/RAM). Ví dụ: `billing` 2 CPU / 1 GB, `postgres` 1,5 CPU / 3 GB."
+3. **Resource pooling:** "8 database trong cùng 1 PostgreSQL instance, nhưng mỗi service có quota riêng (CPU/RAM). Ví dụ: `billing` 2 CPU / 1 GB, `postgres` 1,5 CPU / 3 GB. Trên VM 4 GB dùng bản `laptop`: `billing` 768 MB, `postgres` 1,5 GB — thực đo `postgres` chỉ dùng 146 MiB cho cả 8 DB."
 4. **Rapid elasticity:** "Scale service độc lập: `docker compose up -d --scale auth=3` tạo 3 bản auth nếu traffic tăng, không ảnh hưởng các service khác."
 5. **Measured service:** "Prometheus scrape `/metrics` định kỳ, Grafana provision sẵn dashboard. KPI: p95 đọc <300 ms, ghi <500 ms, lỗi <1%."
 6. **On-demand:** "Tạo tenant mới = seed 1 dòng vào DB, không downtime. Thêm feature = thêm service + API, không cần sửa toàn hệ thống."
@@ -439,7 +440,7 @@ def blind_index(value: str | None) -> str | None:
 | 6 | Saga orchestration và choreography khác nhau như thế nào? | Orchestration: contract service là "thủ tướng" điều phối 3 bước (giữ phòng → kích hoạt → tạo cọc); Choreography: mỗi service tự quyết định khi nhận event (billing phát, report/notification tự phản ứng). |
 | 7 | CQRS tại sao lại cần? | Tách ghi (Write) khỏi đọc (Read) → mỗi side có thể scale độc lập; Write tối ưu cho transaction, Read tối ưu cho query phức tạp dashboard. |
 | 8 | Làm sao đảm bảo read model luôn đúng? | Endpoint `POST /internal/v1/reports/reconcile` đọc snapshot từ billing (nguồn chân lý) rồi ghi đè read model. Chạy sau khi có thay đổi quan trọng. |
-| 9 | Làm sao xử lý khi event bị trùng? | Idempotent Consumer: `INSERT processed_events(event_id) UNIQUE`. Nếu event_id đã tồn tại → bỏ qua, gửi lại không sao. |
+| 9 | Làm sao xử lý khi event bị trùng? | Idempotent Consumer: `INSERT processed_events(event_id, consumer)` với khóa chính 2 cột. Nếu đã tồn tại → bỏ qua, gửi lại không sao. Có cột `consumer` để 2 consumer cùng nghe 1 event không chặn nhau. |
 | 10 | DLQ dùng làm gì? | Sự cố event nhiều lần không làm nghẽn hàng chính → đẩy vào DLQ, người quản trị can thiệp sau. |
 
 ## Câu hỏi về database
@@ -447,7 +448,7 @@ def blind_index(value: str | None) -> str | None:
 | # | Câu hỏi | Đáp án ngắn |
 |---|---|---|
 | 11 | Mỗi service có database riêng vì sao không dùng chung 1 DB? | DB riêng đảm bảo隔离 (isolation), schema độc lập, scale độc lập; DB chung dễ gây xung đột schema, khóa bảng khi query phức tạp. |
-| 12 | Tài khoản database trong từng service như thế nào? | Mỗi service có user riêng (uid 10001/app), kết nối qua environment variable, không dùng root. |
+| 12 | Tài khoản database trong từng service như thế nào? | Mỗi service một role PostgreSQL riêng `svc_<db>` (không superuser), chỉ `CONNECT` được DB của mình; mật khẩu cấp qua Docker Secret `db_password_<db>`. Superuser `qlpt` chỉ dùng cho backup. Demo: `svc_room` vào `db_auth` → bị từ chối. |
 | 13 | Mối quan hệ giữa 8 database như thế nào? | Không có quan hệ JOIN xuyên database. Mỗi database self-contained. Liên hệ qua event RabbitMQ hoặc API call. |
 | 14 | Seed data dùng cách nào để đảm bảo reproducible? | Dùng uuid5 (băm tất định từ tên) → chạy seed lại vẫn ra đúng bộ dữ liệu. Ví dụ: `uuid5(NAMESPACE_DNS, 'qlpt-room-01')` luôn cho cùng 1 phòng. |
 | 14 | Migration cơ sở dữ liệu xử lý ra sao? | Dùng Alembic: mỗi service có folder migrations riêng, `make migrate` chạy tất cả theo thứ tự. |
@@ -458,7 +459,7 @@ def blind_index(value: str | None) -> str | None:
 
 | # | Câu hỏi | Đáp án ngắn |
 |---|---|---|
-| 19 | JWT access token sống bao lâu? | 15 phút. Refresh token sống lâu hơn (30 ngày) nhưng có thể thu hồi qua Redis denylist `jti`. |
+| 19 | JWT access token sống bao lâu? | 15 phút, chỉ giữ trong bộ nhớ trình duyệt (không `localStorage`). Refresh token sống lâu hơn (30 ngày), nằm trong cookie HttpOnly → JavaScript không đọc được; có thể thu hồi qua Redis denylist `jti`. |
 | 20 | RBAC multi-layer là kiểm tra gì? | Kiểm tra role (admin/tenant/user) AND scope (property_id). TENANT chỉ thấy dữ liệu của chính mình property. |
 | 21 | Xử lý trường hợp access token bị tấn công/gạt cắp? | Access token chỉ sống 15 phút. `jti` nằm trong Redis denylist khi logout. Nghi ngờ → xoay `jwt_secret` → mọi token cũ chết ngay. |
 | 22 | CC... đọc như thế nào nếu cần tìm? | Sử dụng blind index: `WHERE blind_index(value) = xxx`. Chỉ tenant-service và admin được có khóa HMAC. |
@@ -468,14 +469,14 @@ def blind_index(value: str | None) -> str | None:
 | 26 | Grafana chỉ 127.0.0.1 vì sao? | Để người dùng từ xa không truy cập trực tiếp, buộc dùng SSH tunnel; giảm surface tấn. |
 | 27 | Quét Trivy kết quả như thế nào? | Python: 7 HIGH / 0 CRITICAL (sau nâng PyJWT 2.14.0 + python-multipart 0.0.30); OS: 54 HIGH do base image CVE upstream. |
 | 28 | Làm sao cập nhật dependency an toàn? | Backup requirements.txt → chạy `pip install -r requirements.txt` mới → build image → verify health + smoke test. |
-| 29 | Secret 관리 (admin_password, jwt_secret) như thế nào? | Đặt trong thư mục `secrets/` (chmod 0644, chown root), Docker Secrets mount vào container read_only; không bao giờ commit `.env` vào git. |
+| 29 | Secret 관리 (admin_password, jwt_secret) như thế nào? | Đặt trong thư mục `secrets/` (thư mục 700, file 600, chủ sở hữu root), Docker Secrets mount vào container read_only; mỗi container chỉ nhận secret nó cần; không bao giờ commit `secrets/` hay `.env` vào git. |
 | 30 | Rate limit nginx đi kèm cấu hình ra sao? | Zone auth chặt hơn (5 req/phút), zone general (20 req/phút); chống brute-force login, spam API. |
 
 ## Câu hỏi về triển khai
 
 | # | Câu hỏi | Đáp án ngắn |
 |---|---|---|
-| 31 | VM 4 GB có chạy nổi 16 container không? | Dùng overlay `docker-compose.laptop.yml` (hạ trần RAM, bỏ loki/promtail/cAdvisor/node-exporter) + swap 2 GB + `vm.overcommit_memory=1`. Số liệu `docker stats`: [điền sau khi đo]. |
+| 31 | VM 4 GB có chạy nổi 16 container không? | Dùng overlay `docker-compose.laptop.yml` (hạ trần RAM, bỏ loki/promtail/cAdvisor/node-exporter) + swap 2 GB + `vm.overcommit_memory=1`. **Đo thật 23/10/2026:** 16 container dùng ≈ 1,2 GiB (mỗi service Python ~78 MiB, postgres 146 MiB cho 8 DB, rabbitmq 136 MiB, nginx 8 MiB); cả VM dùng 1,7 / 3,8 GiB, còn 2,1 GiB, swap ≈ 0. CPU lúc nhàn rỗi < 6 % mỗi container. |
 | 32 | Làm sao bật hệ thống lại sau khi tắt máy? | Ưu tiên Suspend VMware. Nếu tắt hẳn: `br-ex-ip.service` tự gán lại `172.24.4.1` cho `br-ex`, kiểm tra `openstack server list`, container tự lên nhờ `restart: unless-stopped`. |
 | 33 | Truy cập hệ thống từ ngoài thế nào? | Floating IP `172.24.4.51` (router Neutron NAT sang fixed IP `10.0.0.15`), security group mở 22/80/443. Từ laptop Windows đi qua `openstack-host` bằng SSH tunnel. Lên mạng công khai thì dùng tunnel (ngrok/cloudflared). |
 | 34 | Vì sao VM cần proxy để ra internet? | Ảo hóa lồng 2 lớp (VMware → DevStack): gói dữ liệu trả về bị `openstack-host` RST. Đã loại trừ MTU, offload, MSS, conntrack; giải pháp là `tinyproxy` trên `openstack-host`. Đây là hạn chế của môi trường lab, cloud thật không gặp. |
@@ -496,10 +497,22 @@ def blind_index(value: str | None) -> str | None:
 | 44 | NếuGVHD hỏi "hiểu sâu hay chỉ ghép code"? | Trả lời tốt phần "tại sao" (mục 6): giải thích trade-off, lý do chọn pattern, code orgiginal do team viết. |
 | 45 | Nếu bị thiếu thời gian, slide nào có thể bỏ? | Bắt buộc: slide 1 (bìa), 2 (bài toán), 5 (8 service), 9 (demo 2-3 bước quan trọng), 12 (kết).Có thể bỏ: slide 4 (NIST), 7 (CQRS sâu), 10 (giám sát chi tiết). |
 | 46 | Nếu có lỗi kỹ thuật ngay trước buổi bảo vệ? | Chạy `scripts/07-verify-final.sh` khoanh vùng lỗi; nếu mạng không có → dùng video demo đã quay sẵn; nếu container chết → `docker compose up -d`. |
-| 47 | NếuGVHD hỏi "tài khoản demo là ai"? | `admin` / mật khẩu trong `secrets/admin_password.txt` (mật khẩu hiện: `jZaM6a9umC1L3O2IWdjWDQUu`); `khach01` / `Tenant@12345`. |
+| 47 | NếuGVHD hỏi "tài khoản demo là ai"? | `admin` / mật khẩu trong `secrets/admin_password.txt`; `khach01` / mật khẩu trong `secrets/tenant_demo_password.txt`. Mật khẩu sinh ngẫu nhiên khi cài, **không ghi vào tài liệu** — đọc trực tiếp trên VM khi cần. |
 | 48 | NếuGVHD hỏi "em tự làm cái gì, cái gì tham khảo"? | Tham khảo microservices.io, NIST, Fowler; **quyết định thiết kế là của nhóm**: token SYSTEM, blind index, outbox+DLQ, DRY_RUN, seed uuid5 tất định. |
 | 49 | NếuGVHD hỏi "mức độ maturity của code ra sao"? | Code đang ở mức "production-ready cho dãy trọ nhỏ/midium"; có CI/CD, smoke test, healthcheck, kiểm chứng bảo mật (Trivy); chưa có unit test từng module, chưa có load test thực trên máy hiện tại. |
-| 50 | Câu hỏi "đoán" khó nhất có thể là? | "Làm sao đảm bảo hệ thống an toàn khi hạ tầng chỉ 1 máy?" → Đáp: cô lập mạng (4 networkqlpt-), container non-root, read_only, cap_drop, HTTPS + SAN cert, rate limit nginx, secret file chmod 0644. |
+| 50 | Câu hỏi "đoán" khó nhất có thể là? | "Làm sao đảm bảo hệ thống an toàn khi hạ tầng chỉ 1 máy?" → Đáp: cô lập mạng (4 networkqlpt-), container non-root, read_only, cap_drop, HTTPS + SAN cert, rate limit nginx, secret file 600, mỗi service 1 tài khoản DB riêng. |
+
+## Câu hỏi về các lỗi nhóm đã tự rà soát và sửa (xem `docs/11` mục 10.1)
+
+| # | Câu hỏi | Đáp án ngắn |
+|---|---|---|
+| 51 | Em có tự kiểm tra lại hệ thống không hay chỉ viết xong là thôi? | Có: đọc lại ERD và phân tích chéo dữ liệu dump thật của 8 DB, tìm được 13 lỗi (quan hệ + khai thác được), sửa và áp lên hệ thống đang chạy bằng `scripts/08-harden-db.sh`. |
+| 52 | Lỗi nghiêm trọng nhất tìm được là gì? | Bảng `tenants_snapshot` ở `db_contract` lưu **CCCD bản rõ** — mã hóa ở `db_tenant` thành vô nghĩa. Sửa: chỉ giữ 4 số cuối, `VACUUM FULL` để xóa hẳn bản cũ trên đĩa. Bài học: dữ liệu nhạy cảm chỉ được nằm **một nơi**. |
+| 53 | Hai người cùng bấm "xác nhận thanh toán" một lúc thì sao? | Khóa dòng hóa đơn `SELECT … FOR UPDATE` → request thứ hai chờ, đọc lại số đã trả; thêm `CHECK paid_amount <= total_amount` ở DB làm chốt chặn cuối. |
+| 54 | Xóa hóa đơn có mất lịch sử thanh toán không? | Không: FK chứng từ tiền là `ON DELETE RESTRICT` (trước là CASCADE). Hóa đơn đã có thanh toán thì không xóa được. |
+| 55 | Máy tắt đúng lúc job hết hạn hợp đồng chạy thì sao? | Trước đây job bị lỡ (dump có hợp đồng hết hạn vẫn `ACTIVE`). Nay scheduler **chạy bù** các job quan trọng ngay khi khởi động. |
+| 56 | Phòng của cơ sở A có thể bị gắn vào tòa nhà của cơ sở B không? | Không: FK kép `rooms(building_id, property_id) → buildings(id, property_id)` — DB tự từ chối, không phụ thuộc code. |
+| 57 | XSS lấy cắp token được không? | Access token chỉ trong bộ nhớ, refresh token cookie HttpOnly; CSP `script-src 'self'` chặn script nhúng; JS tách hẳn ra `app.js`, không có script inline. |
 
 ---
 
@@ -521,7 +534,7 @@ def blind_index(value: str | None) -> str | None:
 - [ ] Trong `rental-server`: `cd ~/dtdm && make laptop-up && make health` → 9/9.
 - [ ] `sudo bash scripts/07-verify-final.sh` → kết quả "TẤT CẢ ĐẠT".
 - [ ] Smoke test `sudo make test-int` → ghi lại kết quả thật (bản trước: 26/26 PASS).
-- [ ] `docker stats --no-pager` → ghi RAM/CPU thật để trả lời câu 31.
+- [x] `docker stats --no-stream` → đã ghi RAM/CPU thật vào câu 31 (23/10/2026). Đo lại nếu thay đổi cấu hình.
 - [ ] Mở SSH tunnel; `https://localhost:8443/` → 200 OK; Grafana `http://localhost:3000/` → login admin OK.
 - [ ] Cập nhật KPI dashboard trong mục demo theo dữ liệu thật trên `rental-server`.
 - [ ] Snapshot VMware `demo-ok` sau khi mọi mục trên đạt.
@@ -553,7 +566,7 @@ def blind_index(value: str | None) -> str | None:
 | **Mạng/WiFi không có** | Chạy demo qua video 30s đã quay sẵn (tạo video trước ngày bảo vệ); chuyển sang slide nội dung +설명 từ ngữ. |
 | **Container không up** | Chạy `docker compose down && docker compose up -d`; chờ 60s để DB khởi động; chạy lại verify-final. |
 | **Nginx 502 sau recreate** | Chạy `make reload-nginx` (nạp lại cấu hình, cập nhật IP upstream). |
-| **Mật khẩu admin quên** | Đọc từ file `secrets/admin_password.txt` (mật khẩu hiện: `jZaM6a9umC1L3O2IWdjWDQUu`). |
+| **Mật khẩu admin quên** | Trên `rental-server`: `sudo cat ~/dtdm/secrets/admin_password.txt`. |
 | **Smoke test/k6 thất bại** | Chạy `make health` trước để khẳng định service là healthy; nếu vẫn lỗi → focus vào demo 2-3 bước quan trọng (đăng nhập, dashboard, hóa đơn) và bỏ qua bước còn lại; giải thích là "do môi trường test có khác". |
 | **GVHD hỏi câu ngoài mục đã biết** | Trả lời чест honesty: "Em chưa gặp câu hỏi này trước, nhưng em có thể giải thích về... (liên quan đến kiến trúc/design pattern đã áp dụng)" và chuyển sang phần kỹ thuật có準备. |
 
