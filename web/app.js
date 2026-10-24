@@ -369,7 +369,7 @@ const markFilter = (id, key, cur) => $$(`#${id} button`).forEach((x) => x.setAtt
    ====================================================================== */
 VIEWS.home = async (v) => {
   const period = curPeriod();
-  const [dash, rooms, inv, overdue, expiring, incidents, readings, occupied, periodInv, pinv] = await Promise.all([
+  const [dash, rooms, inv, overdue, expiring, incidents, readings, occupied, periodInv] = await Promise.all([
     api("GET", "/api/v1/reports/dashboard"),
     api("GET", "/api/v1/rooms/stats"),
     api("GET", "/api/v1/invoices/stats"),
@@ -379,15 +379,13 @@ VIEWS.home = async (v) => {
     api("GET", "/api/v1/meter-readings?" + qs({ period, utility_type: "ELECTRIC", page_size: 100 })),
     api("GET", "/api/v1/rooms?" + qs({ status: "OCCUPIED", page_size: 100 })),
     api("GET", "/api/v1/invoices?" + qs({ period, page_size: 1 })),
-    api("GET", "/api/v1/invoices/stats?" + qs({ period })),
   ]);
   /* ⭐ API lỗi KHÔNG được coi là "danh sách rỗng": nếu API hóa đơn quá hạn
      chết mà vẫn hiện "Mọi việc đã xong" thì chủ trọ yên tâm sai. Ghi nhận
      nguồn nào lỗi, hiện cảnh báo, và không kết luận gì từ nguồn đó. */
   const failed = [[dash, "báo cáo doanh thu"], [rooms, "thống kê phòng"], [inv, "thống kê hóa đơn"],
     [overdue, "hóa đơn quá hạn"], [expiring, "hợp đồng sắp hết hạn"], [incidents, "sự cố"],
-    [readings, "chỉ số điện nước"], [occupied, "danh sách phòng"], [periodInv, "hóa đơn kỳ này"],
-    [pinv, "thống kê kỳ này"]]
+    [readings, "chỉ số điện nước"], [occupied, "danh sách phòng"], [periodInv, "hóa đơn kỳ này"]]
     .filter(([res]) => !res.ok).map(([, name]) => name);
   const kpi = (dash.data && dash.data.kpi) || {};
   const r = rooms.ok ? rooms.data || {} : {}, s = inv.ok ? inv.data || {} : {};
@@ -417,13 +415,9 @@ VIEWS.home = async (v) => {
   const total7 = pts.reduce((a, p) => a + num(p.collected), 0);
   const max7 = Math.max(...pts.map((p) => num(p.collected)), 1);
 
-  /* Thẻ chính: hóa đơn KỲ THÁNG NÀY, nguồn billing (khớp trang Sổ thu tiền khi lọc cùng kỳ).
-     Số "tiền nhận trong tháng" của report-service (read model CQRS, tính theo ngày nhận
-     tiền, gồm cả tiền trả cho kỳ cũ) là thước đo KHÁC — để thành dòng phụ có nhãn riêng,
-     không trộn vào cùng câu với tổng đã lập. */
-  const odPeriod = od.filter((x) => String(x.period || "").slice(0, 7) === period.slice(0, 7))
-    .reduce((a, x) => a + num(x.total_amount) - num(x.paid_amount), 0);
-  const cashLine = dash.ok ? `<span class="cash-in">${ico("cash", "sm")} Tiền nhận trong tháng (theo ngày nhận, từ báo cáo): <b>${fmtMoney(kpi.revenue_month)}</b></span>` : "";
+  /* Thẻ chính: đúng số liệu "Mọi kỳ" của trang Sổ thu tiền (cùng API, cùng collectBlock)
+     để hai nơi luôn khớp. Số "tiền nhận trong tháng" của report-service tính theo NGÀY
+     NHẬN tiền — thước đo khác, không đặt ở đây để khỏi lẫn. */
   const urgent = inc.filter((x) => x.priority === "URGENT").length;
 
   v.innerHTML = head("Hôm nay",
@@ -431,14 +425,14 @@ VIEWS.home = async (v) => {
     ${failed.length ? `<div class="note alarm">${ico("alert")}<div><b>Chưa tải được: ${esc(failed.join(", "))}.</b>
       Số liệu liên quan đang để “—” và danh sách việc có thể chưa đủ. Tải lại trang sau ít phút.</div></div>` : ""}
     <div class="overview">
-      <section class="card hero-fig inv-sum" aria-label="Hóa đơn kỳ này">
-        ${pinv.ok ? collectBlock(pinv.data, "Kỳ " + fmtPeriod(period).toLowerCase(), { overdueAmt: odPeriod, who: "người thuê", extra: cashLine })
-          : `<div class="label">${ico("receipt")}Kỳ ${fmtPeriod(period).toLowerCase()}</div><div class="big">—</div>${cashLine}`}
+      <section class="card hero-fig inv-sum" aria-label="Tiền thu, mọi kỳ">
+        ${inv.ok ? collectBlock(s, "Mọi kỳ", { overdueAmt: overdue.ok ? odSum : 0 })
+          : `<div class="label">${ico("receipt")}Mọi kỳ</div><div class="big">—</div>`}
       </section>
       <div class="stats">
-        <section class="card stat"><div class="label">${ico("receipt", "sm")}Tổng nợ mọi kỳ</div>
-          <div class="v warn-t">${inv.ok ? fmtMoney(s.total_outstanding) : "—"}</div>
-          <div class="s">${inv.ok ? `${s.pending ?? 0} chờ trả · ${s.overdue ?? 0} quá hạn` : ""}</div></section>
+        <section class="card stat ${od.length ? "alarm" : ""}"><div class="label">${ico("alert", "sm")}Quá hạn</div>
+          <div class="v">${overdue.ok ? fmtMoney(odSum) : "—"}</div>
+          <div class="s">${overdue.ok ? `${od.length} hóa đơn` : ""}</div></section>
         <section class="card stat"><div class="label">${ico("door", "sm")}Phòng có người</div>
           <div class="v">${rooms.ok ? `${r.occupied ?? 0}/${r.total ?? 0}` : "—"}</div>
           <div class="s">${occRate !== null ? `lấp đầy ${occRate}%` : ""}</div></section>
